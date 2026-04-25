@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "vue": "https://cdn.jsdelivr.net/npm/vue@3.5.32/dist/vue.esm-browser.js",
+                "@graffiti-garden/implementation-local": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-local@1.2.0/dist/browser/index.js",
+                "@graffiti-garden/implementation-decentralized": "https://cdn.jsdelivr.net/npm/@graffiti-garden/implementation-decentralized@0.0.9/dist/browser/index.js",
+                "@graffiti-garden/wrapper-vue": "https://cdn.jsdelivr.net/npm/@graffiti-garden/wrapper-vue@1.2.2/dist/browser/plugin.mjs"
+            }
+        }
+    </script>
+    <script src="chat.js" type="module"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">Loading...</div>
+
+    <template id="template">
+        <div id="layout">
+            <aside id="sidebar">
+                <header id="sidebar-header">
+                    <h2>Chats</h2>
+                    <div id="session-controls">
+                        <button
+                            v-if="!$graffitiSession.value"
+                            @click="$graffiti.login()"
+                        >
+                            Log In
+                        </button>
+                        <template v-else>
+                            <span class="actor-handle">
+                                <graffiti-actor-to-handle
+                                    :actor="$graffitiSession.value.actor"
+                                    v-slot="{ handle }"
+                                >{{ displayHandle(handle) }}</graffiti-actor-to-handle>
+                            </span>
+                            <button @click="$graffiti.logout($graffitiSession.value)">
+                                Log Out
+                            </button>
+                        </template>
+                    </div>
+                </header>
+
+                <form
+                    v-if="$graffitiSession.value"
+                    id="new-chat-form"
+                    @submit.prevent="createChat()"
+                >
+                    <input
+                        type="text"
+                        id="new-chat-title"
+                        v-model="newChatTitle"
+                        placeholder="New chat title..."
+                    >
+                    <button
+                        type="submit"
+                        id="create-chat-btn"
+                        :disabled="!newChatTitle || isCreatingChat"
+                    >
+                        {{ isCreatingChat ? "Creating..." : "Create" }}
+                    </button>
+                </form>
+
+                <nav id="chat-list">
+                    <p v-if="!$graffitiSession.value" class="empty-state">
+                        Log in to see your chats.
+                    </p>
+                    <p
+                        v-else-if="areChatsLoading"
+                        class="empty-state"
+                    >
+                        <em>Loading chats...</em>
+                    </p>
+                    <p
+                        v-else-if="sortedChats.length === 0"
+                        class="empty-state"
+                    >
+                        No chats yet. Create one above.
+                    </p>
+                    <ul v-else>
+                        <li
+                            v-for="chat of sortedChats"
+                            :key="chat.url"
+                            class="chat-item"
+                            :class="{ active: chat.value.channel === activeChannel }"
+                            @click="selectChat(chat)"
+                        >
+                            <span class="chat-name">{{ chat.value.title }}</span>
+                        </li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <main id="chat-window">
+                <header id="chat-header">
+                    <h1>{{ activeChat ? activeChat.value.title : "Messages" }}</h1>
+                </header>
+
+                <section v-if="activeChat" id="members-panel">
+                    <div id="members-header">
+                        <h2>Members</h2>
+                        <button
+                            type="button"
+                            id="leave-chat-btn"
+                            @click="requestLeaveChat()"
+                        >
+                            Leave chat
+                        </button>
+                    </div>
+                    <ul id="member-list">
+                        <li
+                            v-for="actor of (activeChat.value.members ?? [])"
+                            :key="actor"
+                            class="member-item"
+                        >
+                            <graffiti-actor-to-handle
+                                :actor="actor"
+                                v-slot="{ handle }"
+                            >{{ displayHandle(handle) }}</graffiti-actor-to-handle>
+                            <span
+                                v-if="actor === $graffitiSession.value?.actor"
+                                class="member-tag"
+                            >you</span>
+                        </li>
+                    </ul>
+
+                    <form
+                        v-if="isActiveChatOwner"
+                        id="add-member-form"
+                        @submit.prevent="addUserToChat()"
+                    >
+                        <input
+                            type="text"
+                            id="add-member-input"
+                            v-model="newMemberHandle"
+                            placeholder="Add user by username..."
+                            :disabled="isAddingMember"
+                        >
+                        <button
+                            type="submit"
+                            id="add-member-btn"
+                            :disabled="!newMemberHandle || isAddingMember"
+                        >
+                            {{ isAddingMember ? "Adding..." : "Add" }}
+                        </button>
+                    </form>
+                    <p v-if="addMemberError" class="form-error">
+                        {{ addMemberError }}
+                    </p>
+                </section>
+
+                <section id="messages">
+                    <p v-if="!activeChannel" class="empty-state">
+                        Select a chat to start messaging.
+                    </p>
+                    <p
+                        v-else-if="areMessagesLoading"
+                        class="empty-state"
+                    >
+                        <em>Loading messages...</em>
+                    </p>
+                    <p
+                        v-else-if="sortedMessages.length === 0"
+                        class="empty-state"
+                    >
+                        No messages yet. Say hello.
+                    </p>
+                    <ul v-else id="message-list">
+                        <li
+                            v-for="message of sortedMessages"
+                            :key="message.url"
+                            class="message"
+                            :class="{ mine: message.actor === $graffitiSession.value?.actor }"
+                        >
+                            <div class="message-meta">
+                                <strong class="message-author">
+                                    <graffiti-actor-to-handle
+                                        :actor="message.actor"
+                                        v-slot="{ handle }"
+                                    >{{ displayHandle(handle) }}</graffiti-actor-to-handle>
+                                </strong>
+                                <span class="message-time">
+                                    {{ new Date(message.value.published).toLocaleString() }}
+                                </span>
+                            </div>
+                            <p class="message-text">{{ message.value.content }}</p>
+                            <button
+                                v-if="message.actor === $graffitiSession.value?.actor"
+                                class="message-delete"
+                                @click="deleteMessage(message)"
+                                :disabled="isDeleting.has(message.url)"
+                            >
+                                {{ isDeleting.has(message.url) ? "Deleting..." : "Delete" }}
+                            </button>
+                        </li>
+                    </ul>
+                </section>
+
+                <footer id="chat-footer" v-if="activeChannel">
+                    <form id="message-form" @submit.prevent="sendMessage()">
+                        <input
+                            type="text"
+                            id="message-input"
+                            v-model="myMessage"
+                            placeholder="Type a message..."
+                            :disabled="isSending"
+                        >
+                        <button
+                            type="submit"
+                            id="send-btn"
+                            :disabled="!myMessage || isSending"
+                        >
+                            {{ isSending ? "Sending..." : "Send" }}
+                        </button>
+                    </form>
+                </footer>
+            </main>
+
+            <div
+                v-if="isLeaveDialogOpen"
+                id="leave-modal-backdrop"
+                @click.self="cancelLeaveChat()"
+            >
+                <div
+                    class="leave-modal"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="leave-modal-title"
+                >
+                    <h2 id="leave-modal-title">Leave this chat?</h2>
+                    <p class="leave-modal-body">
+                        Are you sure you want to leave
+                        <strong>"{{ activeChat?.value.title }}"</strong>?
+                        You won't see new messages from this chat anymore.
+                    </p>
+                    <div class="leave-modal-actions">
+                        <button
+                            type="button"
+                            class="leave-modal-cancel"
+                            @click="cancelLeaveChat()"
+                            :disabled="isLeavingChat"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            class="leave-modal-confirm"
+                            @click="confirmLeaveChat()"
+                            :disabled="isLeavingChat"
+                        >
+                            {{ isLeavingChat ? "Leaving..." : "Leave chat" }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                v-if="pendingDeleteList.length"
+                id="undo-toasts"
+                aria-live="polite"
+            >
+                <div
+                    v-for="entry of pendingDeleteList"
+                    :key="entry.url"
+                    class="undo-toast"
+                >
+                    <span class="undo-toast-text">Message deleted</span>
+                    <button
+                        type="button"
+                        class="undo-toast-btn"
+                        @click="undoDelete(entry.url)"
+                    >
+                        Undo
+                    </button>
+                    <span
+                        class="undo-toast-progress"
+                        :style="{ animationDuration: UNDO_DELETE_MS + 'ms' }"
+                    ></span>
+                </div>
+            </div>
+        </div>
+    </template>
+</body>
+</html>
