@@ -194,7 +194,7 @@
 
                 <members-panel :chat="activeChat" />
 
-                <section id="messages">
+                <section id="messages" ref="messagesContainer">
                     <p v-if="!activeChannel" class="empty-state">
                         Select a chat to start messaging.
                     </p>
