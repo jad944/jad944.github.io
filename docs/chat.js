@@ -1,12 +1,4 @@
-import {
-  createApp,
-  defineAsyncComponent,
-  ref,
-  computed,
-  watch,
-  nextTick,
-  onMounted,
-} from "vue";
+import { createApp, defineAsyncComponent, ref, computed, watch } from "vue";
 import {
   createRouter,
   createWebHashHistory,
@@ -329,85 +321,6 @@ function setup() {
     { immediate: true },
   );
 
-  // ---- Auto-scroll: keep the latest message in view ------------------
-  //
-  // Two behaviors:
-  //   1. Opening a chat (or its messages finishing their first load)
-  //      jumps the view to the bottom-most message. Without this the
-  //      user lands on the *oldest* message in a long thread and has
-  //      to scroll down — the opposite of every chat-app convention.
-  //   2. While a chat is already open, new/sent messages auto-scroll
-  //      *only if the user was already pinned to the bottom*. If
-  //      they've scrolled up to read history we leave them there —
-  //      yanking the viewport on every incoming message would make
-  //      catching up impossible.
-  //
-  // The DOM handle comes through a real template ref bound on
-  // <section id="messages" ref="messagesContainer"> in index.html, so
-  // it tracks Vue's mount/unmount lifecycle. (An earlier version
-  // reached out with document.getElementById, which races against
-  // Vue's first paint and was fragile.)
-  const messagesContainer = ref(null);
-
-  // 16px tolerance covers sub-pixel scroll rounding plus the small
-  // gap between the last message and the container's bottom padding.
-  function isPinnedToBottom(el) {
-    return el.scrollHeight - el.scrollTop - el.clientHeight < 16;
-  }
-
-  function scrollMessagesToBottom() {
-    const el = messagesContainer.value;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }
-
-  // Snapshot whether the user is at the bottom *before* Vue patches
-  // the new message into the DOM. We need the pre-patch reading
-  // because once the new <li> is inserted scrollHeight grows and a
-  // post-patch check would always say "not at bottom". flush:'pre'
-  // runs the callback before the component re-renders.
-  let wasPinnedBeforePatch = true;
-  watch(
-    () => sortedMessages.value.length,
-    () => {
-      const el = messagesContainer.value;
-      wasPinnedBeforePatch = el ? isPinnedToBottom(el) : true;
-    },
-    { flush: "pre" },
-  );
-
-  // Chat-switch / first-load: always jump to the bottom. Waits for
-  // areMessagesLoading to flip false so we scroll against the real
-  // message list, not the "Loading messages..." placeholder. Using
-  // onMounted guards the very first run so it can never fire before
-  // the messages container exists.
-  onMounted(() => {
-    watch(
-      [activeChannel, areMessagesLoading],
-      async ([channel, loading]) => {
-        if (!channel || loading) return;
-        await nextTick();
-        scrollMessagesToBottom();
-      },
-      { immediate: true, flush: "post" },
-    );
-  });
-
-  // New message arrived (or one was sent) in the open chat. Only
-  // follow the bottom if the user was already there per the snapshot
-  // above. Ignore shrinkage (deletes / undo) so the viewport doesn't
-  // jump when a message disappears.
-  watch(
-    () => sortedMessages.value.length,
-    async (count, prevCount) => {
-      if (count <= (prevCount ?? 0)) return;
-      if (!wasPinnedBeforePatch) return;
-      await nextTick();
-      scrollMessagesToBottom();
-    },
-    { flush: "post" },
-  );
-
   // ---- Active-chat-bound thin wrappers ------------------------------
   //
   // The shared module exposes channel-scoped functions so it doesn't
@@ -549,7 +462,6 @@ function setup() {
     isDeleting,
     deleteMessage,
     sortedMessages,
-    messagesContainer,
     areMessagesLoading,
     pendingDeletes,
     pendingDeleteList,
