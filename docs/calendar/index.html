@@ -1,0 +1,137 @@
+<div id="calendar-layout">
+    <header id="calendar-header">
+        <button
+            type="button"
+            id="calendar-back"
+            @click="navigateBackFromCalendar()"
+            aria-label="Back"
+            title="Back"
+        >
+            <span aria-hidden="true">&larr;</span>
+        </button>
+
+        <div id="calendar-title-row">
+            <button
+                type="button"
+                class="calendar-step-btn"
+                @click="goPrevPeriod()"
+                :aria-label="calendarView === 'month' ? 'Previous month' : 'Previous day'"
+            >
+                &lsaquo;
+            </button>
+            <h1 id="calendar-title">
+                {{ calendarView === 'month' ? monthTitle : dayTitle }}
+            </h1>
+            <button
+                type="button"
+                class="calendar-step-btn"
+                @click="goNextPeriod()"
+                :aria-label="calendarView === 'month' ? 'Next month' : 'Next day'"
+            >
+                &rsaquo;
+            </button>
+        </div>
+
+        <div id="calendar-controls">
+            <button
+                type="button"
+                class="calendar-today-btn"
+                @click="goToToday()"
+            >
+                Today
+            </button>
+            <div id="calendar-view-toggle" role="tablist">
+                <button
+                    type="button"
+                    role="tab"
+                    :aria-selected="calendarView === 'day'"
+                    :class="{ active: calendarView === 'day' }"
+                    @click="setCalendarView('day')"
+                >
+                    Day
+                </button>
+                <button
+                    type="button"
+                    role="tab"
+                    :aria-selected="calendarView === 'month'"
+                    :class="{ active: calendarView === 'month' }"
+                    @click="setCalendarView('month')"
+                >
+                    Month
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main id="calendar-body">
+        <div v-if="calendarView === 'month'" id="calendar-month">
+            <div
+                v-for="label of weekdayLabels"
+                :key="label"
+                class="calendar-weekday"
+            >
+                {{ label }}
+            </div>
+            <div
+                v-for="cell of monthGrid"
+                :key="cell.key"
+                class="calendar-day-cell"
+                :class="{
+                    'other-month': !cell.inMonth,
+                    today: cell.isToday,
+                    focal: cell.isFocal,
+                }"
+                @click="selectDay(cell)"
+            >
+                <span class="calendar-day-number">{{ cell.day }}</span>
+                <div
+                    v-if="cell.events.length"
+                    class="calendar-day-events"
+                >
+                    <button
+                        v-for="event of cell.events"
+                        :key="event.laterUrl"
+                        type="button"
+                        class="calendar-day-event"
+                        :title="`${formatTime(event.scheduledFor)} \u2014 ${event.title}`"
+                        @click.stop="openChatFromCalendar(event.channel)"
+                    >
+                        <span class="calendar-day-event-time">
+                            {{ formatTime(event.scheduledFor) }}
+                        </span>
+                        <span class="calendar-day-event-title">
+                            {{ event.title }}
+                        </span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div v-else id="calendar-day-view">
+            <div
+                v-for="h of dayHours"
+                :key="h.hour"
+                class="calendar-hour-row"
+            >
+                <span class="calendar-hour-label">{{ h.label }}</span>
+                <div class="calendar-hour-slot">
+                    <button
+                        v-for="event of (dayEventsByHour.get(h.hour) || [])"
+                        :key="event.laterUrl"
+                        type="button"
+                        class="calendar-hour-event"
+                        :title="`${formatTime(event.scheduledFor)} \u2014 ${event.title}`"
+                        @click="openChatFromCalendar(event.channel)"
+                    >
+                        <span class="calendar-hour-event-time">
+                            {{ formatTime(event.scheduledFor) }}
+                        </span>
+                        <span class="calendar-hour-event-title">
+                            {{ event.title }}
+                        </span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>

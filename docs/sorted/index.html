@@ -1,0 +1,164 @@
+<div id="sorted-layout">
+    <header id="sorted-header">
+        <button
+            type="button"
+            id="sorted-back"
+            @click="navigateBackFromSorted()"
+            aria-label="Back"
+            title="Back"
+        >
+            <span aria-hidden="true">&larr;</span>
+        </button>
+        <h1 id="sorted-title">Sorted messages</h1>
+    </header>
+
+    <main id="sorted-body">
+        <p v-if="!$graffitiSession.value" class="empty-state">
+            Log in to see your sorted messages.
+        </p>
+        <p v-else-if="areChatsLoading" class="empty-state">
+            <em>Loading chats...</em>
+        </p>
+        <div v-else id="sorted-board">
+            <section class="sorted-column">
+                <header class="sorted-column-header sorted-column-new-header">
+                    <h2>New messages</h2>
+                    <span class="sorted-column-count">
+                        {{ sortedColumns.newMessages.length }}
+                    </span>
+                </header>
+                <ul class="sorted-column-list">
+                    <li
+                        v-if="sortedColumns.newMessages.length === 0"
+                        class="sorted-column-empty"
+                    >
+                        No new messages.
+                    </li>
+                    <li
+                        v-for="entry of sortedColumns.newMessages"
+                        :key="entry.chat.url"
+                        class="sorted-card"
+                    >
+                        <button
+                            type="button"
+                            class="sorted-card-btn"
+                            @click="openChatFromSorted(entry.chat.value.channel)"
+                        >
+                            <span class="sorted-card-title">
+                                {{ entry.chat.value.title }}
+                            </span>
+                            <span class="sorted-card-meta">
+                                Unread messages
+                            </span>
+                        </button>
+                    </li>
+                </ul>
+            </section>
+
+            <section class="sorted-column">
+                <header class="sorted-column-header sorted-column-scheduled-header">
+                    <h2>Scheduled messages</h2>
+                    <span class="sorted-column-count">
+                        {{ sortedColumns.scheduled.length }}
+                    </span>
+                </header>
+                <ul class="sorted-column-list">
+                    <li
+                        v-if="sortedColumns.scheduled.length === 0"
+                        class="sorted-column-empty"
+                    >
+                        Nothing scheduled.
+                    </li>
+                    <li
+                        v-for="entry of sortedColumns.scheduled"
+                        :key="entry.chat.url"
+                        class="sorted-card"
+                    >
+                        <button
+                            type="button"
+                            class="sorted-card-btn"
+                            @click="openChatFromSorted(entry.chat.value.channel)"
+                        >
+                            <span class="sorted-card-title">
+                                {{ entry.chat.value.title }}
+                            </span>
+                            <span class="sorted-card-meta">
+                                {{ formatScheduledLabel(entry.scheduledFor) }}
+                            </span>
+                        </button>
+                    </li>
+                </ul>
+            </section>
+
+            <section class="sorted-column">
+                <header class="sorted-column-header sorted-column-later-header">
+                    <h2>Plain later messages</h2>
+                    <span class="sorted-column-count">
+                        {{ sortedColumns.plainLater.length }}
+                    </span>
+                </header>
+                <ul class="sorted-column-list">
+                    <li
+                        v-if="sortedColumns.plainLater.length === 0"
+                        class="sorted-column-empty"
+                    >
+                        None marked for later.
+                    </li>
+                    <li
+                        v-for="entry of sortedColumns.plainLater"
+                        :key="entry.chat.url"
+                        class="sorted-card"
+                    >
+                        <button
+                            type="button"
+                            class="sorted-card-btn"
+                            @click="openChatFromSorted(entry.chat.value.channel)"
+                        >
+                            <span class="sorted-card-title">
+                                {{ entry.chat.value.title }}
+                            </span>
+                            <span class="sorted-card-meta">
+                                Reply when you can
+                            </span>
+                        </button>
+                    </li>
+                </ul>
+            </section>
+
+            <section class="sorted-column">
+                <header class="sorted-column-header sorted-column-read-header">
+                    <h2>Read messages</h2>
+                    <span class="sorted-column-count">
+                        {{ sortedColumns.read.length }}
+                    </span>
+                </header>
+                <ul class="sorted-column-list">
+                    <li
+                        v-if="sortedColumns.read.length === 0"
+                        class="sorted-column-empty"
+                    >
+                        Nothing here yet.
+                    </li>
+                    <li
+                        v-for="entry of sortedColumns.read"
+                        :key="entry.chat.url"
+                        class="sorted-card"
+                    >
+                        <button
+                            type="button"
+                            class="sorted-card-btn"
+                            @click="openChatFromSorted(entry.chat.value.channel)"
+                        >
+                            <span class="sorted-card-title">
+                                {{ entry.chat.value.title }}
+                            </span>
+                            <span class="sorted-card-meta">
+                                Caught up
+                            </span>
+                        </button>
+                    </li>
+                </ul>
+            </section>
+        </div>
+    </main>
+</div>

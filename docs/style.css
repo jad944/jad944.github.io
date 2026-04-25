@@ -100,27 +100,111 @@ button:disabled {
 }
 
 .chat-item {
-    padding: 0.75rem 1rem;
-    cursor: pointer;
     border-bottom: 1px solid #f0f0f2;
 }
 
-.chat-item:hover {
+.chat-item-link {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    color: inherit;
+    text-decoration: none;
+}
+
+.chat-item-link:hover {
     background: #f5f5f7;
 }
 
-.chat-item.active {
+.chat-item-link.active {
     background: #e8f0fe;
 }
 
 .chat-name {
     font-size: 0.95rem;
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.unread-dot {
+    flex-shrink: 0;
+    width: 0.55rem;
+    height: 0.55rem;
+    margin-top: 0.35rem;
+    border-radius: 50%;
+    background: #007aff;
+    box-shadow: 0 0 0 2px #ffffff;
+}
+
+.unread-dot.later {
+    background: #34c759;
+}
+
+.chat-item-link.active .unread-dot {
+    box-shadow: 0 0 0 2px #e8f0fe;
+}
+
+.chat-not-found {
+    color: #d12a2a;
 }
 
 .empty-state {
     padding: 1rem;
     color: #8e8e93;
     font-size: 0.9rem;
+}
+
+#sidebar-footer {
+    padding: 0.75rem 1rem;
+    border-top: 1px solid #e5e5ea;
+    background: #ffffff;
+}
+
+#later-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    background: #ffffff;
+    border: 1px solid #34c759;
+    color: #1b5e2b;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+#later-btn:hover:not(:disabled) {
+    background: #e8f8ec;
+}
+
+#later-btn.active,
+#later-btn.active:hover:not(:disabled) {
+    background: #34c759;
+    border-color: #2aa84a;
+    color: #ffffff;
+}
+
+#later-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.later-btn-dot {
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 50%;
+    background: #34c759;
+    box-shadow: 0 0 0 2px #ffffff;
+}
+
+#later-btn.active .later-btn-dot {
+    background: #ffffff;
+    box-shadow: 0 0 0 2px #34c759;
 }
 
 #chat-window {
@@ -130,6 +214,10 @@ button:disabled {
 }
 
 #chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
     padding: 1rem 1.5rem;
     border-bottom: 1px solid #e5e5ea;
     background: #ffffff;
@@ -138,93 +226,62 @@ button:disabled {
 #chat-header h1 {
     margin: 0;
     font-size: 1.2rem;
-}
-
-#members-panel {
-    padding: 0.75rem 1.5rem;
-    border-bottom: 1px solid #e5e5ea;
-    background: #fafafa;
-}
-
-#members-panel h2 {
-    margin: 0 0 0.5rem 0;
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #6e6e73;
-}
-
-#members-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
-}
-
-#members-header h2 {
-    margin: 0;
-}
-
-#leave-chat-btn {
-    padding: 0.3rem 0.7rem;
-    font-size: 0.8rem;
-    color: #d12a2a;
-    background: #ffffff;
-    border: 1px solid #f0c2c2;
-    border-radius: 6px;
-}
-
-#leave-chat-btn:hover:not(:disabled) {
-    background: #fdecec;
-    border-color: #e6a4a4;
-}
-
-#member-list {
-    list-style: none;
-    margin: 0 0 0.75rem 0;
-    padding: 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-}
-
-.member-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.25rem 0.6rem;
-    background: #ffffff;
-    border: 1px solid #e5e5ea;
-    border-radius: 999px;
-    font-size: 0.85rem;
-}
-
-.member-tag {
-    font-size: 0.7rem;
-    color: #6e6e73;
-    text-transform: uppercase;
-}
-
-#add-member-form {
-    display: flex;
-    gap: 0.5rem;
-}
-
-#add-member-form input {
     flex: 1;
     min-width: 0;
-    padding: 0.4rem 0.6rem;
-    border: 1px solid #d2d2d7;
-    border-radius: 6px;
-    font-size: 0.9rem;
+    overflow-wrap: anywhere;
 }
 
-.form-error {
-    margin: 0.5rem 0 0 0;
-    color: #d12a2a;
-    font-size: 0.85rem;
+#scheduled-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.7rem 0.3rem 0.55rem;
+    background: #e8f0fe;
+    border: 1px solid #b6d3ff;
+    border-radius: 999px;
+    color: #004fa3;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1;
 }
+
+.scheduled-indicator-icon {
+    font-size: 0.85rem;
+    line-height: 1;
+}
+
+#later-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.7rem 0.3rem 0.55rem;
+    background: #e8f8ec;
+    border: 1px solid #b4e2bf;
+    border-radius: 999px;
+    color: #1b5e2b;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+}
+
+#later-indicator:hover:not(:disabled) {
+    background: #d6f1de;
+    border-color: #8fd1a1;
+}
+
+.later-indicator-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: #34c759;
+    box-shadow: 0 0 0 2px #ffffff;
+}
+
+/* Members panel + leave-confirmation modal styles live alongside
+   their component in members_section/style.css. The
+   `leave-modal-fade` / `leave-modal-pop` keyframes stay in this file
+   because the schedule modal below also reuses them. */
 
 #messages {
     flex: 1;
@@ -388,7 +445,91 @@ button:disabled {
     to   { opacity: 1; transform: translateY(0); }
 }
 
-#leave-modal-backdrop {
+@keyframes leave-modal-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes leave-modal-pop {
+    from { opacity: 0; transform: scale(0.96); }
+    to   { opacity: 1; transform: scale(1); }
+}
+
+#sorted-btn,
+#calendar-btn {
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    margin-bottom: 0.5rem;
+    background: #ffffff;
+    border: 1px solid #d2d2d7;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #1d1d1f;
+}
+
+#sorted-btn:hover:not(:disabled),
+#calendar-btn:hover:not(:disabled) {
+    background: #f0f0f3;
+}
+
+#later-button-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+}
+
+#later-button-row #later-btn {
+    width: 100%;
+}
+
+#schedule-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    width: 100%;
+    padding: 0.55rem 0.6rem;
+    background: #ffffff;
+    border: 1px solid #007aff;
+    color: #004fa3;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+#schedule-btn:hover:not(:disabled) {
+    background: #e8f0fe;
+}
+
+#schedule-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.schedule-btn-icon {
+    font-size: 1rem;
+    line-height: 1;
+}
+
+/* Used by the prev/next month arrows in the schedule modal's mini
+   calendar. The standalone /#/calendar route ships its own copy of
+   this class in calendar/style.css. */
+.calendar-step-btn {
+    background: #ffffff;
+    border: 1px solid #d2d2d7;
+    border-radius: 6px;
+    padding: 0.15rem 0.55rem;
+    font-size: 1rem;
+    line-height: 1.2;
+    color: #1d1d1f;
+}
+
+.calendar-step-btn:hover:not(:disabled) {
+    background: #f0f0f3;
+}
+
+#schedule-modal-backdrop {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.45);
@@ -400,54 +541,160 @@ button:disabled {
     animation: leave-modal-fade 120ms ease-out;
 }
 
-.leave-modal {
+.schedule-modal {
     background: #ffffff;
     border-radius: 12px;
     box-shadow: 0 18px 48px rgba(0, 0, 0, 0.25);
-    padding: 1.25rem 1.5rem 1.25rem;
-    max-width: 420px;
+    padding: 1rem 1.25rem 1rem;
+    max-width: 360px;
     width: 100%;
     animation: leave-modal-pop 150ms ease-out;
-}
-
-.leave-modal h2 {
-    margin: 0 0 0.5rem 0;
-    font-size: 1.1rem;
-}
-
-.leave-modal-body {
-    margin: 0 0 1.25rem 0;
-    color: #3a3a3c;
-    font-size: 0.95rem;
-    line-height: 1.4;
-}
-
-.leave-modal-actions {
     display: flex;
-    justify-content: flex-end;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.schedule-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 0.5rem;
 }
 
-.leave-modal-cancel {
+.schedule-modal-header h2 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+
+.schedule-modal-close {
+    background: transparent;
+    border: none;
+    font-size: 1.4rem;
+    line-height: 1;
+    color: #6e6e73;
+    padding: 0.1rem 0.5rem;
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+.schedule-modal-close:hover:not(:disabled) {
+    background: #ebebf0;
+}
+
+.schedule-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.schedule-month-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+}
+
+.schedule-month-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    min-width: 8rem;
+    text-align: center;
+}
+
+.schedule-mini-month {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+    background: #e5e5ea;
+    border: 1px solid #e5e5ea;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.schedule-mini-weekday {
+    background: #fafafa;
+    padding: 0.3rem 0;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6e6e73;
+    text-align: center;
+}
+
+.schedule-mini-day {
+    background: #ffffff;
+    border: none;
+    padding: 0.45rem 0;
+    font-size: 0.85rem;
+    color: #1d1d1f;
+    cursor: pointer;
+    border-radius: 0;
+}
+
+.schedule-mini-day:hover:not(:disabled) {
+    background: #f0f0f3;
+}
+
+.schedule-mini-day.other-month {
+    color: #b0b0b5;
+    background: #fafafa;
+}
+
+.schedule-mini-day.today {
+    background: #007aff;
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.schedule-mini-day.today:hover:not(:disabled) {
+    background: #0067db;
+}
+
+.schedule-mini-day.focal:not(.today) {
+    background: #d6e9ff;
+    font-weight: 600;
+}
+
+.schedule-time-prompt {
+    margin: 0;
+    color: #3a3a3c;
+    font-size: 0.95rem;
+}
+
+.schedule-time-input {
+    width: 100%;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid #d2d2d7;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-family: inherit;
+}
+
+.schedule-modal-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.schedule-modal-spacer {
+    flex: 1;
+}
+
+.schedule-back-btn {
     background: #f5f5f7;
 }
 
-.leave-modal-confirm {
-    background: #d12a2a;
-    border-color: #b21f1f;
+.schedule-cancel-btn {
+    background: #f5f5f7;
+}
+
+.schedule-confirm-btn {
+    background: #007aff;
+    border-color: #006ee0;
     color: #ffffff;
 }
 
-.leave-modal-confirm:hover:not(:disabled) {
-    background: #b21f1f;
-}
-
-@keyframes leave-modal-fade {
-    from { opacity: 0; }
-    to   { opacity: 1; }
-}
-
-@keyframes leave-modal-pop {
-    from { opacity: 0; transform: scale(0.96); }
-    to   { opacity: 1; transform: scale(1); }
+.schedule-confirm-btn:hover:not(:disabled) {
+    background: #006ee0;
 }
