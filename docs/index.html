@@ -192,7 +192,58 @@
                     </button>
                 </header>
 
-                <members-panel :chat="activeChat" />
+                <section v-if="activeChat" id="members-panel">
+                    <div id="members-header">
+                        <h2>Members</h2>
+                        <button
+                            type="button"
+                            id="leave-chat-btn"
+                            @click="requestLeaveChat()"
+                        >
+                            Leave chat
+                        </button>
+                    </div>
+                    <ul id="member-list">
+                        <li
+                            v-for="actor of (activeChat.value.members ?? [])"
+                            :key="actor"
+                            class="member-item"
+                        >
+                            <graffiti-actor-to-handle
+                                :actor="actor"
+                                v-slot="{ handle }"
+                            >{{ displayHandle(handle) }}</graffiti-actor-to-handle>
+                            <span
+                                v-if="actor === $graffitiSession.value?.actor"
+                                class="member-tag"
+                            >you</span>
+                        </li>
+                    </ul>
+
+                    <form
+                        v-if="isActiveChatOwner"
+                        id="add-member-form"
+                        @submit.prevent="addUserToChat()"
+                    >
+                        <input
+                            type="text"
+                            id="add-member-input"
+                            v-model="newMemberHandle"
+                            placeholder="Add user by username..."
+                            :disabled="isAddingMember"
+                        >
+                        <button
+                            type="submit"
+                            id="add-member-btn"
+                            :disabled="!newMemberHandle || isAddingMember"
+                        >
+                            {{ isAddingMember ? "Adding..." : "Add" }}
+                        </button>
+                    </form>
+                    <p v-if="addMemberError" class="form-error">
+                        {{ addMemberError }}
+                    </p>
+                </section>
 
                 <section id="messages">
                     <p v-if="!activeChannel" class="empty-state">
@@ -278,6 +329,44 @@
                     </form>
                 </footer>
             </main>
+
+            <div
+                v-if="isLeaveDialogOpen"
+                id="leave-modal-backdrop"
+                @click.self="cancelLeaveChat()"
+            >
+                <div
+                    class="leave-modal"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="leave-modal-title"
+                >
+                    <h2 id="leave-modal-title">Leave this chat?</h2>
+                    <p class="leave-modal-body">
+                        Are you sure you want to leave
+                        <strong>"{{ activeChat?.value.title }}"</strong>?
+                        You won't see new messages from this chat anymore.
+                    </p>
+                    <div class="leave-modal-actions">
+                        <button
+                            type="button"
+                            class="leave-modal-cancel"
+                            @click="cancelLeaveChat()"
+                            :disabled="isLeavingChat"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            class="leave-modal-confirm"
+                            @click="confirmLeaveChat()"
+                            :disabled="isLeavingChat"
+                        >
+                            {{ isLeavingChat ? "Leaving..." : "Leave chat" }}
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             <div
                 v-if="isScheduleDialogOpen"

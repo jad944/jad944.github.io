@@ -1,4 +1,4 @@
-import { createApp, defineAsyncComponent, ref, computed, watch } from "vue";
+import { createApp, ref, computed, watch } from "vue";
 import {
   createRouter,
   createWebHashHistory,
@@ -52,6 +52,8 @@ function setup() {
     scheduleLater,
     createChat: postCreateChat,
     sendMessageToChat,
+    addMemberToChat,
+    leaveChat,
     deleteObject,
   } = useSharedChatData();
 
@@ -88,10 +90,17 @@ function setup() {
   const newChatTitle = ref("");
   const isCreatingChat = ref(false);
 
+  const newMemberHandle = ref("");
+  const isAddingMember = ref(false);
+  const addMemberError = ref("");
+
   const myMessage = ref("");
   const isSending = ref(false);
   const isMarkingLater = ref(false);
   const isDeleting = ref(new Set());
+
+  const isLeaveDialogOpen = ref(false);
+  const isLeavingChat = ref(false);
 
   // ---- Sidebar nav --------------------------------------------------
 
@@ -208,6 +217,17 @@ function setup() {
       chats.value.find((c) => c.value.channel === activeChannel.value) ?? null
     );
   });
+
+  // True if the logged-in user created the active chat. Only the creator
+  // can add members, because adding requires deleting the old chat object
+  // and re-posting with an updated allowed list — and only the creator is
+  // permitted to delete their own object.
+  const isActiveChatOwner = computed(
+    () =>
+      !!activeChat.value &&
+      !!session.value &&
+      activeChat.value.actor === session.value.actor,
+  );
 
   const isActiveChatLater = computed(
     () => !!activeChat.value && isLater(activeChat.value),
@@ -331,6 +351,8 @@ function setup() {
 
   function selectChat(chat) {
     router.push({ name: "chat", params: { channel: chat.value.channel } });
+    addMemberError.value = "";
+    newMemberHandle.value = "";
   }
 
   async function createChat() {
@@ -377,6 +399,45 @@ function setup() {
       isScheduleDialogOpen.value = false;
     } finally {
       isScheduling.value = false;
+    }
+  }
+
+  async function addUserToChat() {
+    addMemberError.value = "";
+    if (!activeChat.value) return;
+    const handle = newMemberHandle.value.trim();
+    if (!handle) return;
+
+    isAddingMember.value = true;
+    try {
+      await addMemberToChat(activeChat.value, handle);
+      newMemberHandle.value = "";
+    } catch (err) {
+      addMemberError.value = err?.message ?? "Could not add that user.";
+    } finally {
+      isAddingMember.value = false;
+    }
+  }
+
+  function requestLeaveChat() {
+    if (!activeChat.value) return;
+    isLeaveDialogOpen.value = true;
+  }
+
+  function cancelLeaveChat() {
+    if (isLeavingChat.value) return;
+    isLeaveDialogOpen.value = false;
+  }
+
+  async function confirmLeaveChat() {
+    if (!activeChat.value) return;
+    isLeavingChat.value = true;
+    try {
+      await leaveChat(activeChat.value);
+      router.push({ name: "home" });
+      isLeaveDialogOpen.value = false;
+    } finally {
+      isLeavingChat.value = false;
     }
   }
 
@@ -456,6 +517,11 @@ function setup() {
     activeChat,
     isActiveChatMissing,
     selectChat,
+    isActiveChatOwner,
+    newMemberHandle,
+    isAddingMember,
+    addMemberError,
+    addUserToChat,
     myMessage,
     isSending,
     sendMessage,
@@ -467,6 +533,11 @@ function setup() {
     pendingDeleteList,
     undoDelete,
     UNDO_DELETE_MS,
+    isLeaveDialogOpen,
+    isLeavingChat,
+    requestLeaveChat,
+    cancelLeaveChat,
+    confirmLeaveChat,
     displayHandle,
     hasUnread,
     isLater,
@@ -534,18 +605,6 @@ const router = createRouter({
 });
 
 createApp(App)
-  // The members panel is its own folder under members_section/, with
-  // its own template + stylesheet. Registering it as an async global
-  // component means the chat layout can drop a <members-panel> in
-  // wherever it needs one without each page-level setup having to
-  // know about the panel's local form/modal state — same isolation
-  // we get from the lazy-loaded calendar/sorted route components.
-  .component(
-    "members-panel",
-    defineAsyncComponent(() =>
-      import("./members_section/chat.js").then((m) => m.default()),
-    ),
-  )
   .use(router)
   .use(GraffitiPlugin, {
     graffiti: new GraffitiDecentralized(),
