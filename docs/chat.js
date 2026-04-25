@@ -1,4 +1,11 @@
-import { createApp, defineAsyncComponent, ref, computed, watch } from "vue";
+import {
+  createApp,
+  defineAsyncComponent,
+  ref,
+  computed,
+  watch,
+  nextTick,
+} from "vue";
 import {
   createRouter,
   createWebHashHistory,
@@ -321,6 +328,82 @@ function setup() {
     { immediate: true },
   );
 
+  // ---- Auto-scroll-to-bottom ----------------------------------------
+  //
+  // Bound to the <section id="messages"> scroll container in the
+  // template. We can't query for it via document.getElementById from
+  // setup because (a) setup runs before mount and (b) the container
+  // is unmounted whenever the user navigates to /#/calendar or
+  // /#/sorted, so a one-shot DOM lookup would go stale.
+  const messagesContainer = ref(null);
+
+  function scrollMessagesToBottom() {
+    const el = messagesContainer.value;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  // "Near bottom" = within ~80px of the very last message. Used to
+  // decide whether an incoming message should pull the viewport down
+  // — if the user has deliberately scrolled up to read older
+  // messages, we leave them alone rather than yanking them back to
+  // the latest one.
+  function isMessagesNearBottom() {
+    const el = messagesContainer.value;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
+
+  // Two triggers, one watcher:
+  //   * activeChannel changed  → user just opened a different chat,
+  //                              jump straight to the latest message.
+  //   * sortedMessages.length  → either the initial message batch for
+  //                              this chat just arrived, or a new
+  //                              message was sent/received.
+  //
+  // Three reasons we scroll, in priority order:
+  //   1. Channel change         — opening a new chat always lands you
+  //                               at the latest message.
+  //   2. Message I just sent    — when the new tail-of-list message
+  //                               is one *I* authored, force a scroll
+  //                               even if I had paged up to re-read
+  //                               older history. Hitting Send is an
+  //                               explicit "show me what I wrote"
+  //                               gesture, so being pulled back to
+  //                               the bottom is the desired behavior.
+  //   3. Was already at bottom  — for messages from *other* people we
+  //                               only follow along if the user was
+  //                               already parked near the bottom; if
+  //                               they'd scrolled up to read history
+  //                               we leave them there.
+  //
+  // We snapshot `wasNearBottom` BEFORE the await so the measurement
+  // reflects the pre-render scroll position; the post-flush nextTick
+  // then guarantees the new <li>s exist before we read scrollHeight.
+  watch(
+    [activeChannel, () => sortedMessages.value.length],
+    async ([channel, count], [prevChannel, prevCount]) => {
+      if (!channel) return;
+      const channelChanged = channel !== prevChannel;
+      const countIncreased = !channelChanged && count > (prevCount ?? 0);
+      const wasNearBottom = isMessagesNearBottom();
+
+      // Only treat the trailing message as "mine just-sent" when the
+      // list actually grew this tick — otherwise an unrelated reflow
+      // (e.g. soft-deleting a later message and the tail rolling back
+      // to one I authored earlier) would also scroll us to bottom.
+      const latest = sortedMessages.value[sortedMessages.value.length - 1];
+      const sentByMe =
+        countIncreased && latest?.actor === session.value?.actor;
+
+      await nextTick();
+      if (channelChanged || sentByMe || wasNearBottom) {
+        scrollMessagesToBottom();
+      }
+    },
+    { immediate: true, flush: "post" },
+  );
+
   // ---- Active-chat-bound thin wrappers ------------------------------
   //
   // The shared module exposes channel-scoped functions so it doesn't
@@ -462,6 +545,7 @@ function setup() {
     isDeleting,
     deleteMessage,
     sortedMessages,
+    messagesContainer,
     areMessagesLoading,
     pendingDeletes,
     pendingDeleteList,

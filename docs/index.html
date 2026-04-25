@@ -192,9 +192,9 @@
                     </button>
                 </header>
 
-                <members-panel :chat="activeChat" />
+                <members-panel :chat="activeChat"></members-panel>
 
-                <section id="messages">
+                <section id="messages" ref="messagesContainer">
                     <p v-if="!activeChannel" class="empty-state">
                         Select a chat to start messaging.
                     </p>
