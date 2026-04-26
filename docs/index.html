@@ -96,12 +96,22 @@
                             >
                                 <span class="chat-name">{{ chat.value.title }}</span>
                                 <span
-                                    v-if="isLater(chat) || hasUnread(chat)"
-                                    class="unread-dot"
-                                    :class="{ later: isLater(chat) }"
-                                    :aria-label="isLater(chat) ? 'Reply later' : 'Unread messages'"
-                                    :title="isLater(chat) ? 'Marked to reply later' : 'Unread messages'"
-                                ></span>
+                                    v-if="hasUnread(chat) || isLater(chat)"
+                                    class="chat-item-dots"
+                                >
+                                    <span
+                                        v-if="hasUnread(chat)"
+                                        class="unread-dot"
+                                        aria-label="Unread messages"
+                                        title="Unread messages"
+                                    ></span>
+                                    <span
+                                        v-if="isLater(chat)"
+                                        class="unread-dot later"
+                                        aria-label="Reply later"
+                                        title="Marked to reply later"
+                                    ></span>
+                                </span>
                             </router-link>
                         </li>
                     </ul>

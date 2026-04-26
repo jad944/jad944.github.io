@@ -44,8 +44,27 @@
                             class="sorted-card-btn"
                             @click="openChatFromSorted(entry.chat.value.channel)"
                         >
-                            <span class="sorted-card-title">
-                                {{ entry.chat.value.title }}
+                            <span class="sorted-card-head">
+                                <span class="sorted-card-title">
+                                    {{ entry.chat.value.title }}
+                                </span>
+                                <span
+                                    v-if="hasUnread(entry.chat) || isLater(entry.chat)"
+                                    class="sorted-card-dots"
+                                >
+                                    <span
+                                        v-if="hasUnread(entry.chat)"
+                                        class="sorted-card-dot"
+                                        aria-label="Unread messages"
+                                        title="Unread messages"
+                                    ></span>
+                                    <span
+                                        v-if="isLater(entry.chat)"
+                                        class="sorted-card-dot later"
+                                        aria-label="Reply later"
+                                        title="Marked to reply later"
+                                    ></span>
+                                </span>
                             </span>
                             <span class="sorted-card-meta">
                                 Unread messages
@@ -79,8 +98,27 @@
                             class="sorted-card-btn"
                             @click="openChatFromSorted(entry.chat.value.channel)"
                         >
-                            <span class="sorted-card-title">
-                                {{ entry.chat.value.title }}
+                            <span class="sorted-card-head">
+                                <span class="sorted-card-title">
+                                    {{ entry.chat.value.title }}
+                                </span>
+                                <span
+                                    v-if="hasUnread(entry.chat) || isLater(entry.chat)"
+                                    class="sorted-card-dots"
+                                >
+                                    <span
+                                        v-if="hasUnread(entry.chat)"
+                                        class="sorted-card-dot"
+                                        aria-label="Unread messages"
+                                        title="Unread messages"
+                                    ></span>
+                                    <span
+                                        v-if="isLater(entry.chat)"
+                                        class="sorted-card-dot later"
+                                        aria-label="Reply later"
+                                        title="Marked to reply later"
+                                    ></span>
+                                </span>
                             </span>
                             <span class="sorted-card-meta">
                                 {{ formatScheduledLabel(entry.scheduledFor) }}
@@ -114,8 +152,27 @@
                             class="sorted-card-btn"
                             @click="openChatFromSorted(entry.chat.value.channel)"
                         >
-                            <span class="sorted-card-title">
-                                {{ entry.chat.value.title }}
+                            <span class="sorted-card-head">
+                                <span class="sorted-card-title">
+                                    {{ entry.chat.value.title }}
+                                </span>
+                                <span
+                                    v-if="hasUnread(entry.chat) || isLater(entry.chat)"
+                                    class="sorted-card-dots"
+                                >
+                                    <span
+                                        v-if="hasUnread(entry.chat)"
+                                        class="sorted-card-dot"
+                                        aria-label="Unread messages"
+                                        title="Unread messages"
+                                    ></span>
+                                    <span
+                                        v-if="isLater(entry.chat)"
+                                        class="sorted-card-dot later"
+                                        aria-label="Reply later"
+                                        title="Marked to reply later"
+                                    ></span>
+                                </span>
                             </span>
                             <span class="sorted-card-meta">
                                 Reply when you can

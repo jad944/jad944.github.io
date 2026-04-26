@@ -27,7 +27,8 @@ function setup() {
   // the root App's setup has already initialized those streams, so
   // this call just hands back the cached singleton — no duplicate
   // discovery polls.
-  const { areChatsLoading, sortedColumns } = useSharedChatData();
+  const { areChatsLoading, sortedColumns, hasUnread, isLater } =
+    useSharedChatData();
 
   function navigateBackFromSorted() {
     router.push({ name: "home" });
@@ -40,6 +41,8 @@ function setup() {
   return {
     areChatsLoading,
     sortedColumns,
+    hasUnread,
+    isLater,
     formatScheduledLabel,
     navigateBackFromSorted,
     openChatFromSorted,

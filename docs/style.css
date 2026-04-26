@@ -129,11 +129,23 @@ button:disabled {
     overflow-wrap: anywhere;
 }
 
-.unread-dot {
+/* Container for the per-chat status dots in the sidebar. A chat can
+   show one or two dots (blue for unread, green for later) so the
+   wrapper handles the vertical alignment with the title text and
+   the small inter-dot gap. The blue dot renders first so a chat
+   that's marked-for-later AND has new messages reads as
+   "blue-then-green" left-to-right. */
+.chat-item-dots {
     flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 0.35rem;
+}
+
+.unread-dot {
     width: 0.55rem;
     height: 0.55rem;
-    margin-top: 0.35rem;
     border-radius: 50%;
     background: #007aff;
     box-shadow: 0 0 0 2px #ffffff;
@@ -391,7 +403,14 @@ button:disabled {
 
 #message-list {
     list-style: none;
-    margin: 0;
+    /* Push the topmost message down so the reaction picker — which
+       pops upward from a trigger pinned to the bubble's vertical
+       centre — has room to expand inside the #messages scroll area
+       without being clipped by its overflow:auto edge. The 1rem of
+       top padding on #messages alone isn't enough to clear the
+       picker (~2.5rem tall + 0.35rem gap + half the trigger), so
+       this margin makes up the difference. */
+    margin: 3rem 0 0 0;
     padding: 0;
     display: flex;
     flex-direction: column;

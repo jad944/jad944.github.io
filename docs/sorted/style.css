@@ -170,10 +170,44 @@
     border-color: #d2d2d7;
 }
 
+/* Title + status-dots row inside a sorted card. The dots sit at the
+   top-right of the card so a chat that's marked-for-later AND has
+   new messages reads as the same blue-then-green pair shown beside
+   its name in the sidebar — same visual vocabulary, same ordering. */
+.sorted-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+}
+
 .sorted-card-title {
     font-weight: 600;
     overflow-wrap: anywhere;
     line-height: 1.25;
+    flex: 1;
+    min-width: 0;
+}
+
+.sorted-card-dots {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 0.3rem;
+}
+
+.sorted-card-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: #007aff;
+    box-shadow: 0 0 0 2px #ffffff;
+}
+
+.sorted-card-dot.later {
+    background: #34c759;
 }
 
 .sorted-card-meta {

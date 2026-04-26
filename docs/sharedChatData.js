@@ -486,17 +486,12 @@ export function useSharedChatData() {
 
     // Bucket every visible chat into one of four kanban columns.
     //
-    // Priority order matters when a chat would qualify for more than
-    // one bucket:
-    //   1. Scheduled later  — an explicit deadline is the most
-    //                         specific intent the user has expressed,
-    //                         so it wins even over unread messages.
-    //   2. Plain later      — "I'll get to this" still beats "the
-    //                         system noticed something arrived";
-    //                         matches how the sidebar's dot prefers
-    //                         green over blue.
-    //   3. New messages     — unread, no later flag.
-    //   4. Read             — everything else.
+    // The columns are not mutually exclusive: a chat that's marked
+    // for later (or scheduled) AND has new messages shows up in BOTH
+    // its later/scheduled column and the new-messages column, so the
+    // user sees the same "both states are true" picture they get
+    // from the sidebar's two dots. The Read column is still
+    // exclusive — it's the catch-all for chats with no other state.
     //
     // We pre-bucket `laterObjects` by channel so we don't rescan the
     // full marker list once per chat.
@@ -536,13 +531,23 @@ export function useSharedChatData() {
           }
         }
 
-        if (nextScheduledFor !== null) {
+        const isUnread = hasUnread(chat);
+        const isScheduled = nextScheduledFor !== null;
+        // A scheduled marker takes precedence over a plain later
+        // marker for column-placement purposes, mirroring the
+        // sidebar's "scheduled chip wins" treatment.
+        const isPlainLaterOnly = !isScheduled && hasPlainLater;
+
+        if (isScheduled) {
           scheduled.push({ chat, scheduledFor: nextScheduledFor });
-        } else if (hasPlainLater) {
+        }
+        if (isPlainLaterOnly) {
           plainLater.push({ chat });
-        } else if (hasUnread(chat)) {
+        }
+        if (isUnread) {
           newMessages.push({ chat });
-        } else {
+        }
+        if (!isUnread && !isScheduled && !isPlainLaterOnly) {
           read.push({ chat });
         }
       }
