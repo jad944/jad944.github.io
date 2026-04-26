@@ -1,4 +1,11 @@
-import { createApp, ref, computed, watch } from "vue";
+import {
+  createApp,
+  ref,
+  computed,
+  watch,
+  nextTick,
+  defineAsyncComponent,
+} from "vue";
 import {
   createRouter,
   createWebHashHistory,
@@ -93,6 +100,32 @@ function setup() {
   const newMemberHandle = ref("");
   const isAddingMember = ref(false);
   const addMemberError = ref("");
+  // Errors from the add-user form are ephemeral feedback, not durable
+  // state, so they auto-dismiss after a short window. We hold the
+  // active timer on the side so a brand-new query (or a chat switch)
+  // can cancel a still-pending dismissal — otherwise an old timer
+  // would race with the new error and clear it early.
+  const ADD_MEMBER_ERROR_MS = 5000;
+  let addMemberErrorTimer = null;
+
+  function clearAddMemberError() {
+    if (addMemberErrorTimer !== null) {
+      clearTimeout(addMemberErrorTimer);
+      addMemberErrorTimer = null;
+    }
+    addMemberError.value = "";
+  }
+
+  function setAddMemberError(message) {
+    if (addMemberErrorTimer !== null) {
+      clearTimeout(addMemberErrorTimer);
+    }
+    addMemberError.value = message;
+    addMemberErrorTimer = setTimeout(() => {
+      addMemberError.value = "";
+      addMemberErrorTimer = null;
+    }, ADD_MEMBER_ERROR_MS);
+  }
 
   const myMessage = ref("");
   const isSending = ref(false);
@@ -101,6 +134,44 @@ function setup() {
 
   const isLeaveDialogOpen = ref(false);
   const isLeavingChat = ref(false);
+
+  // ---- Messages auto-scroll -----------------------------------------
+  //
+  // Standard chat-app behavior: opening a chat snaps to the latest
+  // message, and new messages keep following the bottom — unless the
+  // user has scrolled up to read history, in which case incoming
+  // messages stay out of their way until they scroll back down.
+  //
+  // `pinnedToBottom` is the single source of truth for "should new
+  // content drag the viewport with it?". It is recomputed every time
+  // the user scrolls (engaging the scroll bar at all immediately
+  // unsets it once the offset crosses the threshold, so the override
+  // sticks even when the user lets go and stops scrolling). The
+  // threshold gives subpixel rendering and the reaction chips that
+  // hang ~9px below the last bubble a little headroom so the user
+  // doesn't accidentally fall out of "pinned" by a few stray pixels.
+
+  const messagesEl = ref(null);
+  const pinnedToBottom = ref(true);
+  const PIN_THRESHOLD_PX = 24;
+
+  function scrollMessagesToBottom() {
+    const el = messagesEl.value;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function onMessagesScroll() {
+    const el = messagesEl.value;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop;
+    pinnedToBottom.value = distFromBottom <= PIN_THRESHOLD_PX;
+  }
+
+  // The two watchers that drive the actual scrolling (activeChannel and
+  // sortedMessages.length) are registered further down, right after
+  // `sortedMessages` is defined — they have to be, because watch()
+  // evaluates its source on registration.
 
   // ---- Sidebar nav --------------------------------------------------
 
@@ -312,6 +383,56 @@ function setup() {
     Array.from(pendingDeletes.value.values()),
   );
 
+  // ---- Auto-scroll watchers -----------------------------------------
+  //
+  // Registered down here (not next to the helpers above) because watch
+  // evaluates its source eagerly and `sortedMessages` only exists from
+  // this point on.
+
+  // Switching chats always re-pins and snaps to the bottom. Done as a
+  // watcher (with immediate:true) rather than only inside selectChat()
+  // so the behavior also fires on direct navigation — deep links, the
+  // browser back/forward buttons, and the initial page load.
+  watch(
+    activeChannel,
+    async () => {
+      pinnedToBottom.value = true;
+      await nextTick();
+      scrollMessagesToBottom();
+    },
+    { immediate: true },
+  );
+
+  // Drop any stale add-member error when the user changes chats.
+  // addMemberError lives at the App scope (one ref shared across
+  // every chat's add-member form), so without this it would visibly
+  // leak from the chat where it was raised into whichever chat the
+  // user navigates to next. The sidebar uses <router-link> rather
+  // than calling selectChat(), so the route change — not a click
+  // handler — is the authoritative signal that "the user moved on".
+  // No immediate:true: the error starts empty on mount, so there's
+  // nothing to clear before the first navigation.
+  watch(activeChannel, () => {
+    clearAddMemberError();
+  });
+
+  // New messages (or a soft-deleted message disappearing) only pull
+  // the viewport down when the user is currently following the
+  // conversation. Watching the length keeps this cheap; the actual
+  // scroll waits for nextTick so the new bubble is in the layout.
+  // When messages are still streaming in for a freshly-opened chat
+  // (areMessagesLoading flickers), the activeChannel watcher above
+  // has already left pinnedToBottom = true, so this naturally walks
+  // the viewport down as each batch arrives.
+  watch(
+    () => sortedMessages.value.length,
+    async () => {
+      if (!pinnedToBottom.value) return;
+      await nextTick();
+      scrollMessagesToBottom();
+    },
+  );
+
   // ---- Auto read-marker watcher -------------------------------------
   //
   // Whenever the user has a chat open AND there are messages newer
@@ -351,7 +472,7 @@ function setup() {
 
   function selectChat(chat) {
     router.push({ name: "chat", params: { channel: chat.value.channel } });
-    addMemberError.value = "";
+    clearAddMemberError();
     newMemberHandle.value = "";
   }
 
@@ -403,7 +524,12 @@ function setup() {
   }
 
   async function addUserToChat() {
-    addMemberError.value = "";
+    // Submitting a new query always wipes the prior error first so
+    // there's no stale message lingering while we wait on the lookup,
+    // and so a slow response can't be undercut by an old auto-dismiss
+    // timer. The new submit then either resolves silently (success)
+    // or installs its own error with a fresh 5s timer below.
+    clearAddMemberError();
     if (!activeChat.value) return;
     const handle = newMemberHandle.value.trim();
     if (!handle) return;
@@ -413,7 +539,7 @@ function setup() {
       await addMemberToChat(activeChat.value, handle);
       newMemberHandle.value = "";
     } catch (err) {
-      addMemberError.value = err?.message ?? "Could not add that user.";
+      setAddMemberError(err?.message ?? "Could not add that user.");
     } finally {
       isAddingMember.value = false;
     }
@@ -450,6 +576,14 @@ function setup() {
     try {
       await sendMessageToChat(activeChat.value, text);
       myMessage.value = "";
+      // Sending is a deliberate re-engagement with the conversation,
+      // so it overrides any previous "scrolled up to read history"
+      // state — re-pin and snap, just like clicking on the chat. The
+      // length watcher above will also fire, but only acts when
+      // already pinned, so we set the pin first.
+      pinnedToBottom.value = true;
+      await nextTick();
+      scrollMessagesToBottom();
     } finally {
       isSending.value = false;
     }
@@ -529,6 +663,8 @@ function setup() {
     deleteMessage,
     sortedMessages,
     areMessagesLoading,
+    messagesEl,
+    onMessagesScroll,
     pendingDeletes,
     pendingDeleteList,
     undoDelete,
@@ -569,7 +705,22 @@ function setup() {
   };
 }
 
-const App = { template: "#template", setup };
+// The Reaction component is reused on every message in the active
+// chat. We register it globally on App.components (rather than as a
+// route) because it lives *inside* a message bubble, not as its own
+// page. Loaded via defineAsyncComponent so the JSON-schema /
+// stylesheet payload doesn't block the chat's first paint — the
+// chips just snap in once the module resolves.
+const Reaction = defineAsyncComponent(async () => {
+  const mod = await import("./reaction/chat.js");
+  return await mod.default();
+});
+
+const App = {
+  template: "#template",
+  setup,
+  components: { Reaction },
+};
 
 // Routes:
 //   /                  empty home (no chat selected, chat layout shows

@@ -1,0 +1,229 @@
+/* The reaction component is rendered inside .message and uses
+   absolute positioning for both its trigger and its chip stack, so
+   the wrapping element itself contributes nothing to the bubble's
+   intrinsic layout. Setting display:contents would technically work
+   too, but a zero-height block is friendlier to assistive tech and
+   avoids the cross-browser quirks display:contents has around
+   focus/scroll. */
+.reaction-component {
+    display: block;
+    height: 0;
+    width: 0;
+    margin: 0;
+    padding: 0;
+    line-height: 0;
+}
+
+/* ---- Trigger (smiley face on hover) ---------------------------- */
+/* Pinned vertically centered just outside the bubble. Side depends
+   on whether the message is the user's own — left for mine, right
+   for everyone else. The wrap rather than the button itself is
+   absolutely positioned so the menu can pop out relative to the
+   trigger without extra math. */
+
+.reaction-trigger-wrap {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 5;
+    line-height: 1;
+    opacity: 0;
+    pointer-events: none;
+    transition:
+        opacity 120ms ease-out,
+        transform 120ms ease-out;
+    /* Invisible padding around the visible button. The wrap sits
+       flush against the bubble (no margin) and the padding both
+       (a) pushes the button outwards to the same offset it had
+       before, and (b) creates a continuous hit area that bridges
+       the bubble and the button so the cursor never "falls into
+       the gutter" and drops .message:hover before it can land on
+       the trigger. The vertical padding makes the button easier
+       to aim at on tall messages too. */
+    padding: 0.45rem;
+}
+
+/* Other people's messages sit on the left; trigger pops to the right
+   of the bubble. */
+.message:not(.mine) .reaction-trigger-wrap {
+    left: 100%;
+}
+
+/* My messages sit on the right; trigger pops to the left of the
+   bubble so it doesn't get clipped by the chat-window edge. */
+.message.mine .reaction-trigger-wrap {
+    right: 100%;
+}
+
+.message:hover .reaction-trigger-wrap,
+.reaction-component.menu-open .reaction-trigger-wrap,
+.reaction-trigger-wrap:focus-within {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.reaction-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.7rem;
+    height: 1.7rem;
+    padding: 0;
+    border: 1px solid #d2d2d7;
+    background: #ffffff;
+    color: #6e6e73;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+    transition:
+        background-color 120ms ease-out,
+        color 120ms ease-out,
+        transform 120ms ease-out;
+}
+
+.reaction-trigger:hover {
+    background: #f5f5f7;
+    color: #1d1d1f;
+    transform: scale(1.05);
+}
+
+.reaction-trigger.open {
+    background: #e8f0fe;
+    border-color: #b6d3ff;
+    color: #004fa3;
+}
+
+.reaction-trigger-glyph {
+    font-size: 1rem;
+    line-height: 1;
+}
+
+/* ---- Picker menu ----------------------------------------------- */
+/* Sits just above the trigger, anchored on the side closest to the
+   bubble so it never hangs off the screen. */
+
+.reaction-menu {
+    position: absolute;
+    bottom: calc(100% + 0.35rem);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.25rem;
+    background: #ffffff;
+    border: 1px solid #d2d2d7;
+    border-radius: 999px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+    z-index: 11;
+    line-height: 1;
+    animation: reaction-menu-pop 110ms ease-out;
+}
+
+.message:not(.mine) .reaction-menu {
+    left: 0;
+}
+
+.message.mine .reaction-menu {
+    right: 0;
+}
+
+.reaction-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: none;
+    background: transparent;
+    border-radius: 50%;
+    font-size: 1.15rem;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+        background-color 100ms ease-out,
+        transform 100ms ease-out;
+}
+
+.reaction-menu-btn:hover:not(:disabled) {
+    background: #f0f0f3;
+    transform: scale(1.18);
+}
+
+.reaction-menu-btn.chosen {
+    background: #e8f0fe;
+}
+
+.reaction-menu-btn.chosen:hover:not(:disabled) {
+    background: #d6e6ff;
+}
+
+@keyframes reaction-menu-pop {
+    from {
+        opacity: 0;
+        transform: translateY(4px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* ---- Chip stack ------------------------------------------------ */
+/* Always visible (not gated on hover) and pinned to the bottom-
+   right corner of the bubble, hanging slightly outside it so the
+   chips read as decorations on the message rather than content. */
+
+.reaction-chips {
+    position: absolute;
+    bottom: -0.55rem;
+    right: 0.6rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    z-index: 4;
+    line-height: 1;
+}
+
+.reaction-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.15rem 0.45rem;
+    background: #ffffff;
+    border: 1px solid #e5e5ea;
+    border-radius: 999px;
+    cursor: pointer;
+    font: inherit;
+    color: #1d1d1f;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    transition:
+        background-color 100ms ease-out,
+        border-color 100ms ease-out,
+        transform 100ms ease-out;
+}
+
+.reaction-chip:hover:not(:disabled) {
+    background: #f5f5f7;
+    transform: translateY(-1px);
+}
+
+.reaction-chip.mine {
+    background: #e8f0fe;
+    border-color: #b6d3ff;
+    color: #004fa3;
+}
+
+.reaction-chip.mine:hover:not(:disabled) {
+    background: #d6e6ff;
+}
+
+.reaction-chip-emoji {
+    font-size: 0.85rem;
+    line-height: 1;
+}
+
+.reaction-chip-count {
+    font-weight: 600;
+    font-size: 0.75rem;
+    line-height: 1;
+}

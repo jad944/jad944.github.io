@@ -240,12 +240,23 @@
                             {{ isAddingMember ? "Adding..." : "Add" }}
                         </button>
                     </form>
-                    <p v-if="addMemberError" class="form-error">
-                        {{ addMemberError }}
-                    </p>
+                    <transition name="form-error">
+                        <p
+                            v-if="addMemberError"
+                            class="form-error"
+                            role="alert"
+                            aria-live="polite"
+                        >
+                            {{ addMemberError }}
+                        </p>
+                    </transition>
                 </section>
 
-                <section id="messages">
+                <section
+                    id="messages"
+                    ref="messagesEl"
+                    @scroll.passive="onMessagesScroll"
+                >
                     <p v-if="!activeChannel" class="empty-state">
                         Select a chat to start messaging.
                     </p>
@@ -306,6 +317,11 @@
                             >
                                 {{ isDeleting.has(message.url) ? "Deleting..." : "Delete" }}
                             </button>
+                            <reaction
+                                v-if="$graffitiSession.value && activeChat"
+                                :message="message"
+                                :chat="activeChat"
+                            ></reaction>
                         </li>
                     </ul>
                 </section>

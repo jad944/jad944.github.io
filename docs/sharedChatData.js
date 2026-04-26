@@ -116,6 +116,29 @@ export const LATER_SCHEMA = {
   },
 };
 
+// Reaction object. Posted once per (actor, message, emoji) combination
+// in the chat's own random channel so every chat member's reaction
+// discovery picks it up. The reaction's `target` is the URL of the
+// message it's reacting to; its `emoji` is one of the small fixed set
+// the picker offers ("heart", "thumbsup", "smiley"). Stacking is
+// derived from how many distinct actors used the same emoji on the
+// same message — we never write a multi-count reaction object.
+export const REACTION_SCHEMA = {
+  properties: {
+    value: {
+      type: "object",
+      required: ["activity", "type", "target", "emoji", "published"],
+      properties: {
+        activity: { const: "React" },
+        type: { const: "Reaction" },
+        target: { type: "string" },
+        emoji: { type: "string" },
+        published: { type: "number" },
+      },
+    },
+  },
+};
+
 // Per-user "Read" marker. Records the latest moment the user observed
 // messages in a particular chat (`target` = chat channel, `lastReadAt`
 // = timestamp). We treat the *highest* lastReadAt for each chat as
@@ -334,6 +357,34 @@ export function useSharedChatData() {
         () => session.value,
         true,
       );
+
+    // Reactions across every chat the user belongs to. Same channel
+    // set as messages because reactions live in the chat's own random
+    // channel — that way every existing chat member already discovers
+    // them without any extra plumbing. Autopolled so a new emoji
+    // someone else adds shows up on your screen without you having
+    // to do anything.
+    const { objects: reactionObjects } = useGraffitiDiscover(
+      () => allChatChannels.value,
+      REACTION_SCHEMA,
+      () => session.value,
+      true,
+    );
+
+    // Map<messageUrl, Reaction[]>. Computed once here so every
+    // <reaction> instance in the message list does an O(1) lookup
+    // rather than a full scan of `reactionObjects` per render.
+    const reactionsByMessageUrl = computed(() => {
+      const map = new Map();
+      for (const r of reactionObjects.value) {
+        const target = r.value.target;
+        if (typeof target !== "string") continue;
+        const list = map.get(target);
+        if (list) list.push(r);
+        else map.set(target, [r]);
+      }
+      return map;
+    });
 
     // Highest `published` per chat channel — but only for messages
     // the logged-in user did NOT send. A chat shouldn't light up its
@@ -688,6 +739,56 @@ export function useSharedChatData() {
       await clearLater(channel);
     }
 
+    // Add a reaction to `message` inside `chat`. Posted in the chat's
+    // own random channel and gated by the chat's member list (mirroring
+    // sendMessageToChat) so exactly the people who can see the message
+    // can also see the reaction.
+    //
+    // No-op when the user has already reacted to this message with
+    // this same emoji — the spec is "stacking only happens when
+    // multiple people react", not "one user can stack with themselves".
+    // The chip's own click handler is what flips an existing reaction
+    // off; this path only ever creates new ones.
+    async function addReaction(message, chat, emoji) {
+      if (!session.value) return;
+      if (!message?.url || !chat?.value?.channel || !emoji) return;
+      const me = session.value.actor;
+      const existing = (reactionsByMessageUrl.value.get(message.url) ?? []).find(
+        (r) => r.actor === me && r.value.emoji === emoji,
+      );
+      if (existing) return;
+      try {
+        await graffiti.post(
+          {
+            value: {
+              activity: "React",
+              type: "Reaction",
+              target: message.url,
+              emoji,
+              published: Date.now(),
+            },
+            channels: [chat.value.channel],
+            allowed: [...(chat.value.members ?? [])],
+          },
+          session.value,
+        );
+      } catch {
+        // Best effort. The user can re-click; we don't toast for this.
+      }
+    }
+
+    // Remove a previously posted reaction (only the poster can do this,
+    // which is enforced by Graffiti). Used when the user clicks their
+    // own reaction chip to take it back.
+    async function removeReaction(reactionUrl) {
+      if (!session.value || !reactionUrl) return;
+      try {
+        await graffiti.delete(reactionUrl, session.value);
+      } catch {
+        // Best effort. The next discover poll will reflect reality.
+      }
+    }
+
     // Share a chat with another user.
     //
     // The Graffiti API only exposes post / get / delete (no patch),
@@ -829,6 +930,7 @@ export function useSharedChatData() {
       readObjects,
       allMessageObjects,
       areAllMessagesLoading,
+      reactionObjects,
 
       // Derived state
       leftChannels,
@@ -840,6 +942,7 @@ export function useSharedChatData() {
       scheduledForByChannel,
       scheduledByDay,
       sortedColumns,
+      reactionsByMessageUrl,
 
       // Predicates
       hasUnread,
@@ -855,6 +958,8 @@ export function useSharedChatData() {
       addMemberToChat,
       leaveChat,
       deleteObject,
+      addReaction,
+      removeReaction,
     };
   });
 

@@ -364,6 +364,25 @@ button:disabled {
     font-size: 0.85rem;
 }
 
+/* The add-member error auto-dismisses after a short window (see
+   chat.js' setAddMemberError). Fading it in and out — rather than
+   letting v-if pop the element in and out instantly — makes the
+   timer-driven disappearance feel intentional instead of like a
+   layout glitch, and softens the swap when a fresh query replaces
+   one error with another. */
+.form-error-enter-active,
+.form-error-leave-active {
+    transition:
+        opacity 180ms ease-out,
+        transform 180ms ease-out;
+}
+
+.form-error-enter-from,
+.form-error-leave-to {
+    opacity: 0;
+    transform: translateY(-2px);
+}
+
 #messages {
     flex: 1;
     overflow-y: auto;
@@ -376,7 +395,10 @@ button:disabled {
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    /* Slightly larger than the bubble's natural rhythm so reaction
+       chips that hang off the bottom-right corner of one message
+       don't visually collide with the next bubble underneath. */
+    gap: 0.9rem;
 }
 
 .message {

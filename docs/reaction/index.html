@@ -1,0 +1,65 @@
+<div
+    ref="rootEl"
+    class="reaction-component"
+    :class="{ mine: isMine, 'menu-open': menuOpen }"
+>
+    <div class="reaction-trigger-wrap">
+        <button
+            type="button"
+            class="reaction-trigger"
+            :class="{ open: menuOpen }"
+            @click="toggleMenu()"
+            aria-haspopup="true"
+            :aria-expanded="menuOpen"
+            aria-label="Add reaction"
+            title="Add reaction"
+        >
+            <span class="reaction-trigger-glyph" aria-hidden="true">&#9786;</span>
+        </button>
+
+        <div
+            v-if="menuOpen"
+            class="reaction-menu"
+            role="menu"
+            @click.stop
+        >
+            <button
+                v-for="opt of REACTION_OPTIONS"
+                :key="opt.id"
+                type="button"
+                class="reaction-menu-btn"
+                :class="{ chosen: hasMyReaction(opt.id) }"
+                role="menuitem"
+                :aria-pressed="hasMyReaction(opt.id)"
+                :aria-label="opt.label"
+                :title="opt.label"
+                @click="pickReaction(opt.id)"
+            >
+                <span aria-hidden="true">{{ opt.glyph }}</span>
+            </button>
+        </div>
+    </div>
+
+    <div
+        v-if="reactionGroups.length"
+        class="reaction-chips"
+    >
+        <button
+            v-for="group of reactionGroups"
+            :key="group.emoji"
+            type="button"
+            class="reaction-chip"
+            :class="{ mine: !!group.mine }"
+            :title="group.title"
+            :aria-label="group.title"
+            :aria-pressed="!!group.mine"
+            @click="toggleReaction(group.emoji)"
+        >
+            <span class="reaction-chip-emoji" aria-hidden="true">{{ group.glyph }}</span>
+            <span
+                v-if="group.count > 1"
+                class="reaction-chip-count"
+            >{{ group.count }}</span>
+        </button>
+    </div>
+</div>
