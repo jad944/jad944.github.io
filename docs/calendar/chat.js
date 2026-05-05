@@ -116,8 +116,9 @@ function setup() {
     router.push({ name: "home" });
   }
 
-  function openChatFromCalendar(channel) {
-    router.push({ name: "chat", params: { channel } });
+  function openChatFromCalendar(channel, messageUrl) {
+    const query = messageUrl ? { animateMessage: messageUrl } : undefined;
+    router.push({ name: "chat", params: { channel }, query });
   }
 
   // Stitch each cell with the scheduled events that fall on its day.

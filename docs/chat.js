@@ -45,16 +45,20 @@ function setup() {
     session,
     chats,
     sortedChats,
+    recentChats,
+    otherChats,
     areChatsLoading,
     laterObjects,
+    laterMessageUrls,
+    laterCountByChannel,
     allMessageObjects,
     areAllMessagesLoading,
     latestMessageByChannel,
     lastReadByChannel,
     hasUnread,
     isLater,
-    markChatAsLater: postLater,
-    clearLater: postClearLater,
+    markMessageAsLater: postMarkMessageAsLater,
+    clearMessageLater: postClearMessageLater,
     markChatAsRead,
     scheduleLater,
     createChat: postCreateChat,
@@ -62,7 +66,65 @@ function setup() {
     addMemberToChat,
     leaveChat,
     deleteObject,
+    scheduledSendObjects,
+    createScheduledSend: postCreateScheduledSend,
+    executeScheduledSend: postExecuteScheduledSend,
   } = useSharedChatData();
+
+  // ---- Tab Notifications for Past-Due Scheduled Messages ----
+  const currentTime = ref(Date.now());
+  setInterval(() => {
+    currentTime.value = Date.now();
+  }, 10000);
+
+  const pastDueNotificationsCount = computed(() => {
+    let count = 0;
+    for (const o of laterObjects.value) {
+      if (typeof o.value.scheduledFor === "number" && o.value.scheduledFor <= currentTime.value) {
+        count++;
+      }
+    }
+    for (const o of scheduledSendObjects.value) {
+      if (typeof o.value.scheduledFor === "number" && o.value.scheduledFor <= currentTime.value) {
+        count++;
+      }
+    }
+    return count;
+  });
+
+  watch(pastDueNotificationsCount, (count) => {
+    if (count > 0) {
+      document.title = `🔴 (${count}) Reply Now`;
+    } else {
+      document.title = "Chat App";
+    }
+  }, { immediate: true });
+
+  // ---- Auto-send timer for scheduled sends --------------------------
+  //
+  // When a ScheduleSend marker's `scheduledFor` passes, we
+  // automatically execute the send. A Set tracks URLs currently
+  // in-flight so concurrent ticks don't fire duplicate sends.
+  const scheduledSendInFlight = ref(new Set());
+
+  watch(
+    [() => scheduledSendObjects.value, currentTime],
+    async () => {
+      for (const sendObj of scheduledSendObjects.value) {
+        const when = sendObj.value.scheduledFor;
+        if (typeof when !== "number") continue;
+        if (when > currentTime.value) continue;
+        if (scheduledSendInFlight.value.has(sendObj.url)) continue;
+        scheduledSendInFlight.value.add(sendObj.url);
+        try {
+          await postExecuteScheduledSend(sendObj);
+        } finally {
+          scheduledSendInFlight.value.delete(sendObj.url);
+        }
+      }
+    },
+    { immediate: true },
+  );
 
   // The random channel of the chat the user has currently opened.
   //
@@ -78,6 +140,47 @@ function setup() {
     const value = Array.isArray(param) ? param[0] : param;
     return value || null;
   });
+
+  const isMobile = ref(window.innerWidth <= 768);
+  const isSidebarCollapsed = ref(false);
+  const isChatWindowCollapsed = ref(false);
+
+  window.addEventListener('resize', () => {
+    const nowMobile = window.innerWidth <= 768;
+    if (nowMobile !== isMobile.value) {
+      isMobile.value = nowMobile;
+      if (nowMobile) {
+        if (activeChannel.value) {
+          isSidebarCollapsed.value = true;
+          isChatWindowCollapsed.value = false;
+        } else {
+          isSidebarCollapsed.value = false;
+          isChatWindowCollapsed.value = true;
+        }
+      } else {
+        isSidebarCollapsed.value = false;
+        isChatWindowCollapsed.value = false;
+      }
+    }
+  });
+
+  function toggleSidebar() {
+    isSidebarCollapsed.value = !isSidebarCollapsed.value;
+    if (isMobile.value && !isSidebarCollapsed.value) {
+      isChatWindowCollapsed.value = true;
+    } else if (isSidebarCollapsed.value && isChatWindowCollapsed.value) {
+      isChatWindowCollapsed.value = false;
+    }
+  }
+
+  function toggleChatWindow() {
+    isChatWindowCollapsed.value = !isChatWindowCollapsed.value;
+    if (isMobile.value && !isChatWindowCollapsed.value) {
+      isSidebarCollapsed.value = true;
+    } else if (isChatWindowCollapsed.value && isSidebarCollapsed.value) {
+      isSidebarCollapsed.value = false;
+    }
+  }
 
   // True when the chat layout (sidebar + chat window) should be shown.
   // The calendar and sorted views are mounted via <router-view> when
@@ -130,10 +233,105 @@ function setup() {
   const myMessage = ref("");
   const isSending = ref(false);
   const isMarkingLater = ref(false);
+  const isUnmarkingLater = ref(false);
   const isDeleting = ref(new Set());
+
+  // ---- Reply-to-message state ----------------------------------------
+  //
+  // The message the user is composing a reply to, or null. Set by
+  // startReply (triggered from the hover reply button on each message)
+  // and cleared by cancelReply, sendMessage, or switching chats.
+  const replyingTo = ref(null);
 
   const isLeaveDialogOpen = ref(false);
   const isLeavingChat = ref(false);
+
+  // ---- Message selection (long-press) --------------------------------
+  //
+  // Users long-press (500ms) a message to select it. The selection
+  // bubble (a checkmark) pops to the left for received messages or
+  // the right for sent messages. Clicking anywhere else deselects.
+  // While a message is selected, the Reply Later and Schedule buttons
+  // in the sidebar footer act on that message instead of the chat.
+
+  const selectedMessage = ref(null);
+  let longPressTimer = null;
+  const LONG_PRESS_MS = 500;
+
+  function onMessagePressStart(message, event) {
+    // Prevent text selection during long press
+    if (longPressTimer) clearTimeout(longPressTimer);
+    longPressTimer = setTimeout(() => {
+      longPressTimer = null;
+      selectedMessage.value = message;
+      // Prevent the click-to-deselect from immediately firing
+      event?.preventDefault?.();
+    }, LONG_PRESS_MS);
+  }
+
+  function onMessagePressEnd() {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  }
+
+  function onMessagePressCancel() {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  }
+
+  function deselectMessage() {
+    selectedMessage.value = null;
+  }
+
+  function isMessageSelected(message) {
+    return selectedMessage.value?.url === message.url;
+  }
+
+  function isMessageLater(message) {
+    return laterMessageUrls.value.has(message.url);
+  }
+
+  // ---- Reply helpers -------------------------------------------------
+
+  function startReply(message) {
+    replyingTo.value = message;
+    // Focus the compose input so the user can start typing immediately.
+    nextTick(() => {
+      const input = document.getElementById("message-input");
+      if (input) input.focus();
+    });
+  }
+
+  function cancelReply() {
+    replyingTo.value = null;
+  }
+
+  // Look up a message object by its Graffiti URL. Used by the reply
+  // indicator to show the author of the original message.
+  function getMessageByUrl(url) {
+    if (!url) return null;
+    return sortedMessages.value.find((m) => m.url === url) ?? null;
+  }
+
+  // Scroll to a message by URL and briefly flash-highlight it.
+  function scrollToMessage(url) {
+    if (!url) return;
+    const list = document.getElementById("message-list");
+    if (!list) return;
+    // Messages are rendered with :key="message.url" so Vue keyed
+    // <li>s can be located by walking the sortedMessages index.
+    const idx = sortedMessages.value.findIndex((m) => m.url === url);
+    if (idx === -1) return;
+    const li = list.children[idx];
+    if (!li) return;
+    li.scrollIntoView({ behavior: "smooth", block: "center" });
+    li.classList.add("reply-flash");
+    setTimeout(() => li.classList.remove("reply-flash"), 1200);
+  }
 
   // ---- Messages auto-scroll -----------------------------------------
   //
@@ -229,7 +427,7 @@ function setup() {
   );
 
   function openScheduleDialog() {
-    if (!activeChat.value) return;
+    if (!activeChat.value || !selectedMessage.value) return;
     scheduleStep.value = "date";
     scheduleDate.value = new Date();
     scheduleTime.value = defaultScheduleTime();
@@ -261,6 +459,93 @@ function setup() {
     const d = new Date(scheduleDate.value);
     d.setMonth(d.getMonth() + 1);
     scheduleDate.value = d;
+  }
+
+  // ---- Schedule Send modal state ------------------------------------
+  //
+  // Parallel to the "Remind Me to Reply" schedule modal, but for
+  // queuing a message to be auto-sent at a future time. Reuses
+  // the same calendar + time-picker two-step pattern.
+  const isScheduleSendDialogOpen = ref(false);
+  const scheduleSendStep = ref("date");
+  const scheduleSendDate = ref(new Date());
+  const scheduleSendTime = ref("12:00");
+  const isScheduleSending = ref(false);
+
+  const scheduleSendMonthGrid = computed(() =>
+    buildMonthGrid(scheduleSendDate.value),
+  );
+
+  const scheduleSendMonthTitle = computed(() =>
+    scheduleSendDate.value.toLocaleDateString(undefined, {
+      month: "long",
+      year: "numeric",
+    }),
+  );
+
+  const scheduleSendPickedDateLabel = computed(() =>
+    scheduleSendDate.value.toLocaleDateString(undefined, {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    }),
+  );
+
+  function openScheduleSendDialog() {
+    if (!activeChat.value) return;
+    if (!myMessage.value.trim()) return;
+    scheduleSendStep.value = "date";
+    scheduleSendDate.value = new Date();
+    scheduleSendTime.value = defaultScheduleTime();
+    isScheduleSendDialogOpen.value = true;
+  }
+
+  function cancelScheduleSend() {
+    if (isScheduleSending.value) return;
+    isScheduleSendDialogOpen.value = false;
+  }
+
+  function pickScheduleSendDate(cell) {
+    scheduleSendDate.value = new Date(cell.date);
+    scheduleSendStep.value = "time";
+  }
+
+  function backToScheduleSendDate() {
+    if (isScheduleSending.value) return;
+    scheduleSendStep.value = "date";
+  }
+
+  function scheduleSendStepPrevMonth() {
+    const d = new Date(scheduleSendDate.value);
+    d.setMonth(d.getMonth() - 1);
+    scheduleSendDate.value = d;
+  }
+
+  function scheduleSendStepNextMonth() {
+    const d = new Date(scheduleSendDate.value);
+    d.setMonth(d.getMonth() + 1);
+    scheduleSendDate.value = d;
+  }
+
+  async function confirmScheduleSend() {
+    if (!activeChat.value || !scheduleSendTime.value) return;
+    const text = myMessage.value.trim();
+    if (!text) return;
+    const [hours, minutes] = scheduleSendTime.value.split(":").map(Number);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return;
+
+    const when = new Date(scheduleSendDate.value);
+    when.setHours(hours, minutes, 0, 0);
+
+    isScheduleSending.value = true;
+    try {
+      const channel = activeChat.value.value.channel;
+      await postCreateScheduledSend(channel, text, when.getTime());
+      myMessage.value = "";
+      isScheduleSendDialogOpen.value = false;
+    } finally {
+      isScheduleSending.value = false;
+    }
   }
 
   // ---- Soft-delete + undo state -------------------------------------
@@ -303,6 +588,13 @@ function setup() {
   const isActiveChatLater = computed(
     () => !!activeChat.value && isLater(activeChat.value),
   );
+
+  // Count of messages marked later in the active chat. Drives the
+  // "# Messages to Reply to Later" header chip.
+  const activeChatLaterCount = computed(() => {
+    if (!activeChat.value) return 0;
+    return laterCountByChannel.value.get(activeChat.value.value.channel) ?? 0;
+  });
 
   // Messages for just the currently open chat, derived from the
   // shared all-chats stream. Each message is posted in exactly one
@@ -412,9 +704,23 @@ function setup() {
   // handler — is the authoritative signal that "the user moved on".
   // No immediate:true: the error starts empty on mount, so there's
   // nothing to clear before the first navigation.
-  watch(activeChannel, () => {
+  watch(activeChannel, (newVal) => {
     clearAddMemberError();
-  });
+    deselectMessage();
+    cancelReply();
+
+    if (newVal) {
+      if (isMobile.value) {
+        isSidebarCollapsed.value = true;
+      }
+      isChatWindowCollapsed.value = false;
+    } else {
+      if (isMobile.value) {
+        isSidebarCollapsed.value = false;
+        isChatWindowCollapsed.value = true;
+      }
+    }
+  }, { immediate: true });
 
   // New messages (or a soft-deleted message disappearing) only pull
   // the viewport down when the user is currently following the
@@ -431,6 +737,41 @@ function setup() {
       await nextTick();
       scrollMessagesToBottom();
     },
+  );
+
+  watch(
+    [() => route.query.animateMessage, areMessagesLoading],
+    async ([animateMessageUrl, loading]) => {
+      if (!animateMessageUrl || loading) return;
+
+      // Wait for DOM to update with messages
+      await nextTick();
+
+      const msg = sortedMessages.value.find(m => m.url === animateMessageUrl);
+      if (!msg) return;
+
+      const isMine = session.value && msg.actor === session.value.actor;
+      const list = document.getElementById("message-list");
+      if (!list) return;
+
+      const idx = sortedMessages.value.findIndex((m) => m.url === animateMessageUrl);
+      if (idx === -1) return;
+      const li = list.children[idx];
+      if (!li) return;
+
+      // Briefly scroll to the animated message
+      li.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      // Animate it
+      const animationClass = isMine ? "bounce-left-to-right" : "bounce-right-to-left";
+      li.classList.add(animationClass);
+
+      // Remove class after animation completes
+      setTimeout(() => {
+        li.classList.remove(animationClass);
+      }, 1000);
+    },
+    { immediate: true }
   );
 
   // ---- Auto read-marker watcher -------------------------------------
@@ -490,24 +831,34 @@ function setup() {
     }
   }
 
-  async function markChatAsLater() {
-    if (!activeChat.value) return;
-    isMarkingLater.value = true;
-    try {
-      await postLater(activeChat.value.value.channel);
-    } finally {
-      isMarkingLater.value = false;
+  // Toggle the later state of the currently selected message.
+  // If the message is already marked, clicking Reply Later again
+  // clears it (no separate dismiss button needed).
+  async function toggleMessageLater() {
+    if (!activeChat.value || !selectedMessage.value) return;
+    const msg = selectedMessage.value;
+    if (laterMessageUrls.value.has(msg.url)) {
+      isUnmarkingLater.value = true;
+      try {
+        await postClearMessageLater(msg.url);
+      } finally {
+        isUnmarkingLater.value = false;
+      }
+    } else {
+      isMarkingLater.value = true;
+      try {
+        const channel = activeChat.value.value.channel;
+        const preview = msg.value.content ?? "";
+        await postMarkMessageAsLater(msg.url, channel, preview);
+      } finally {
+        isMarkingLater.value = false;
+      }
     }
+    deselectMessage();
   }
 
-  // Re-exposed under the same name the template uses; the shared
-  // version takes a channel arg, so the template's
-  // `clearLater(activeChat.value.channel)` call passes through
-  // unchanged.
-  const clearLater = postClearLater;
-
   async function confirmSchedule() {
-    if (!activeChat.value || !scheduleTime.value) return;
+    if (!activeChat.value || !selectedMessage.value || !scheduleTime.value) return;
     const [hours, minutes] = scheduleTime.value.split(":").map(Number);
     if (Number.isNaN(hours) || Number.isNaN(minutes)) return;
 
@@ -516,8 +867,12 @@ function setup() {
 
     isScheduling.value = true;
     try {
-      await scheduleLater(activeChat.value.value.channel, when.getTime());
+      const msg = selectedMessage.value;
+      const channel = activeChat.value.value.channel;
+      const preview = msg.value.content ?? "";
+      await scheduleLater(msg.url, channel, preview, when.getTime());
       isScheduleDialogOpen.value = false;
+      deselectMessage();
     } finally {
       isScheduling.value = false;
     }
@@ -572,10 +927,27 @@ function setup() {
     const text = myMessage.value.trim();
     if (!text) return;
 
+    // Identify the last message before we send, so we can clear its
+    // later marker if the user is replying directly after it.
+    const lastMessage = sortedMessages.value.length > 0
+      ? sortedMessages.value[sortedMessages.value.length - 1]
+      : null;
+
     isSending.value = true;
     try {
-      await sendMessageToChat(activeChat.value, text);
+      const inReplyTo = replyingTo.value?.url ?? null;
+      await sendMessageToChat(activeChat.value, text, inReplyTo);
+
+      if (
+        lastMessage &&
+        lastMessage.url !== inReplyTo &&
+        laterMessageUrls.value.has(lastMessage.url)
+      ) {
+        await postClearMessageLater(lastMessage.url);
+      }
+
       myMessage.value = "";
+      replyingTo.value = null;
       // Sending is a deliberate re-engagement with the conversation,
       // so it overrides any previous "scrolled up to read history"
       // state — re-pin and snap, just like clicking on the chat. The
@@ -641,11 +1013,17 @@ function setup() {
   }
 
   return {
+    isSidebarCollapsed,
+    isChatWindowCollapsed,
+    toggleSidebar,
+    toggleChatWindow,
     newChatTitle,
     isCreatingChat,
     createChat,
     chats,
     sortedChats,
+    recentChats,
+    otherChats,
     areChatsLoading,
     activeChannel,
     activeChat,
@@ -678,9 +1056,22 @@ function setup() {
     hasUnread,
     isLater,
     isActiveChatLater,
+    activeChatLaterCount,
     isMarkingLater,
-    markChatAsLater,
-    clearLater,
+    isUnmarkingLater,
+    toggleMessageLater,
+    selectedMessage,
+    onMessagePressStart,
+    onMessagePressEnd,
+    onMessagePressCancel,
+    deselectMessage,
+    isMessageSelected,
+    isMessageLater,
+    replyingTo,
+    startReply,
+    cancelReply,
+    getMessageByUrl,
+    scrollToMessage,
     isChatView,
     weekdayLabels: WEEKDAY_LABELS,
     openCalendar,
@@ -702,6 +1093,21 @@ function setup() {
     scheduleStepPrevMonth,
     scheduleStepNextMonth,
     confirmSchedule,
+    isScheduleSendDialogOpen,
+    scheduleSendStep,
+    scheduleSendDate,
+    scheduleSendTime,
+    isScheduleSending,
+    scheduleSendMonthGrid,
+    scheduleSendMonthTitle,
+    scheduleSendPickedDateLabel,
+    openScheduleSendDialog,
+    cancelScheduleSend,
+    pickScheduleSendDate,
+    backToScheduleSendDate,
+    scheduleSendStepPrevMonth,
+    scheduleSendStepNextMonth,
+    confirmScheduleSend,
   };
 }
 

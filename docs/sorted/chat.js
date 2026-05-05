@@ -34,8 +34,13 @@ function setup() {
     router.push({ name: "home" });
   }
 
-  function openChatFromSorted(channel) {
-    router.push({ name: "chat", params: { channel } });
+  function openChatFromSorted(channel, messageUrl) {
+    const query = messageUrl ? { animateMessage: messageUrl } : undefined;
+    router.push({ name: "chat", params: { channel }, query });
+  }
+
+  function isPastDue(timestamp) {
+    return typeof timestamp === "number" && timestamp < Date.now();
   }
 
   return {
@@ -46,6 +51,7 @@ function setup() {
     formatScheduledLabel,
     navigateBackFromSorted,
     openChatFromSorted,
+    isPastDue,
   };
 }
 

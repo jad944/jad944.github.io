@@ -89,34 +89,27 @@
                         Nothing scheduled.
                     </li>
                     <li
-                        v-for="entry of sortedColumns.scheduled"
-                        :key="entry.chat.url"
+                        v-for="(entry, idx) of sortedColumns.scheduled"
+                        :key="entry.messageUrl || idx"
                         class="sorted-card"
                     >
                         <button
                             type="button"
                             class="sorted-card-btn"
-                            @click="openChatFromSorted(entry.chat.value.channel)"
+                            @click="openChatFromSorted(entry.chat.value.channel, entry.messageUrl)"
                         >
                             <span class="sorted-card-head">
                                 <span class="sorted-card-title">
-                                    {{ entry.chat.value.title }}
+                                    {{ entry.messagePreview || entry.chat.value.title }}
                                 </span>
                                 <span
-                                    v-if="hasUnread(entry.chat) || isLater(entry.chat)"
+                                    v-if="isPastDue(entry.scheduledFor)"
                                     class="sorted-card-dots"
                                 >
                                     <span
-                                        v-if="hasUnread(entry.chat)"
-                                        class="sorted-card-dot"
-                                        aria-label="Unread messages"
-                                        title="Unread messages"
-                                    ></span>
-                                    <span
-                                        v-if="isLater(entry.chat)"
-                                        class="sorted-card-dot later"
-                                        aria-label="Reply later"
-                                        title="Marked to reply later"
+                                        class="sorted-card-dot past-due"
+                                        aria-label="Past due"
+                                        title="Past due"
                                     ></span>
                                 </span>
                             </span>
@@ -130,7 +123,7 @@
 
             <section class="sorted-column">
                 <header class="sorted-column-header sorted-column-later-header">
-                    <h2>Plain later messages</h2>
+                    <h2>{{ sortedColumns.plainLater.length }} Message{{ sortedColumns.plainLater.length === 1 ? '' : 's' }} to Reply to Later</h2>
                     <span class="sorted-column-count">
                         {{ sortedColumns.plainLater.length }}
                     </span>
@@ -143,35 +136,18 @@
                         None marked for later.
                     </li>
                     <li
-                        v-for="entry of sortedColumns.plainLater"
-                        :key="entry.chat.url"
+                        v-for="(entry, idx) of sortedColumns.plainLater"
+                        :key="entry.messageUrl || idx"
                         class="sorted-card"
                     >
                         <button
                             type="button"
                             class="sorted-card-btn"
-                            @click="openChatFromSorted(entry.chat.value.channel)"
+                            @click="openChatFromSorted(entry.chat.value.channel, entry.messageUrl)"
                         >
                             <span class="sorted-card-head">
                                 <span class="sorted-card-title">
-                                    {{ entry.chat.value.title }}
-                                </span>
-                                <span
-                                    v-if="hasUnread(entry.chat) || isLater(entry.chat)"
-                                    class="sorted-card-dots"
-                                >
-                                    <span
-                                        v-if="hasUnread(entry.chat)"
-                                        class="sorted-card-dot"
-                                        aria-label="Unread messages"
-                                        title="Unread messages"
-                                    ></span>
-                                    <span
-                                        v-if="isLater(entry.chat)"
-                                        class="sorted-card-dot later"
-                                        aria-label="Reply later"
-                                        title="Marked to reply later"
-                                    ></span>
+                                    {{ entry.messagePreview || entry.chat.value.title }}
                                 </span>
                             </span>
                             <span class="sorted-card-meta">
@@ -182,40 +158,6 @@
                 </ul>
             </section>
 
-            <section class="sorted-column">
-                <header class="sorted-column-header sorted-column-read-header">
-                    <h2>Read messages</h2>
-                    <span class="sorted-column-count">
-                        {{ sortedColumns.read.length }}
-                    </span>
-                </header>
-                <ul class="sorted-column-list">
-                    <li
-                        v-if="sortedColumns.read.length === 0"
-                        class="sorted-column-empty"
-                    >
-                        Nothing here yet.
-                    </li>
-                    <li
-                        v-for="entry of sortedColumns.read"
-                        :key="entry.chat.url"
-                        class="sorted-card"
-                    >
-                        <button
-                            type="button"
-                            class="sorted-card-btn"
-                            @click="openChatFromSorted(entry.chat.value.channel)"
-                        >
-                            <span class="sorted-card-title">
-                                {{ entry.chat.value.title }}
-                            </span>
-                            <span class="sorted-card-meta">
-                                Caught up
-                            </span>
-                        </button>
-                    </li>
-                </ul>
-            </section>
         </div>
     </main>
 </div>

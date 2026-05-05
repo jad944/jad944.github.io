@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,27 +19,38 @@
     <script src="chat.js" type="module"></script>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div id="app">Loading...</div>
 
     <template id="template">
-        <div v-if="isChatView" id="layout">
+        <div v-if="isChatView" id="layout"
+            :class="{ 'sidebar-collapsed': isSidebarCollapsed, 'chat-collapsed': isChatWindowCollapsed }">
             <aside id="sidebar">
                 <header id="sidebar-header">
-                    <h2>Chats</h2>
+                    <div class="sidebar-header-top">
+                        <h2>Chats</h2>
+                        <button v-if="activeChannel" type="button" class="layout-toggle-btn" @click="toggleChatWindow()"
+                            title="Toggle Messages">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                                xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="4" width="18" height="16" rx="2" ry="2"></rect>
+                                <line x1="15" y1="4" x2="15" y2="20"></line>
+                                <path v-if="!isChatWindowCollapsed"
+                                    d="M15 4H19C20.1046 4 21 4.89543 21 6V18C21 19.1046 20.1046 20 19 20H15V4Z"
+                                    fill="currentColor" stroke="none"></path>
+                            </svg>
+                        </button>
+                    </div>
                     <div id="session-controls">
-                        <button
-                            v-if="!$graffitiSession.value"
-                            @click="$graffiti.login()"
-                        >
+                        <button v-if="!$graffitiSession.value" @click="$graffiti.login()">
                             Log In
                         </button>
                         <template v-else>
                             <span class="actor-handle">
-                                <graffiti-actor-to-handle
-                                    :actor="$graffitiSession.value.actor"
-                                    v-slot="{ handle }"
-                                >{{ displayHandle(handle) }}</graffiti-actor-to-handle>
+                                <graffiti-actor-to-handle :actor="$graffitiSession.value.actor" v-slot="{ handle }">{{
+                                    displayHandle(handle) }}</graffiti-actor-to-handle>
                             </span>
                             <button @click="$graffiti.logout($graffitiSession.value)">
                                 Log Out
@@ -47,22 +59,9 @@
                     </div>
                 </header>
 
-                <form
-                    v-if="$graffitiSession.value"
-                    id="new-chat-form"
-                    @submit.prevent="createChat()"
-                >
-                    <input
-                        type="text"
-                        id="new-chat-title"
-                        v-model="newChatTitle"
-                        placeholder="New chat title..."
-                    >
-                    <button
-                        type="submit"
-                        id="create-chat-btn"
-                        :disabled="!newChatTitle || isCreatingChat"
-                    >
+                <form v-if="$graffitiSession.value" id="new-chat-form" @submit.prevent="createChat()">
+                    <input type="text" id="new-chat-title" v-model="newChatTitle" placeholder="New chat title...">
+                    <button type="submit" id="create-chat-btn" :disabled="!newChatTitle || isCreatingChat">
                         {{ isCreatingChat ? "Creating..." : "Create" }}
                     </button>
                 </form>
@@ -71,105 +70,88 @@
                     <p v-if="!$graffitiSession.value" class="empty-state">
                         Log in to see your chats.
                     </p>
-                    <p
-                        v-else-if="areChatsLoading"
-                        class="empty-state"
-                    >
+                    <p v-else-if="areChatsLoading" class="empty-state">
                         <em>Loading chats...</em>
                     </p>
-                    <p
-                        v-else-if="sortedChats.length === 0"
-                        class="empty-state"
-                    >
+                    <p v-else-if="sortedChats.length === 0" class="empty-state">
                         No chats yet. Create one above.
                     </p>
                     <ul v-else>
-                        <li
-                            v-for="chat of sortedChats"
-                            :key="chat.url"
-                            class="chat-item"
-                        >
-                            <router-link
-                                :to="`/chat/${chat.value.channel}`"
-                                class="chat-item-link"
-                                active-class="active"
-                            >
+                        <li class="chat-section-label">Most Recent</li>
+                        <li v-for="chat of recentChats" :key="'recent-' + chat.url" class="chat-item">
+                            <router-link :to="`/chat/${chat.value.channel}`" class="chat-item-link"
+                                active-class="active">
                                 <span class="chat-name">{{ chat.value.title }}</span>
-                                <span
-                                    v-if="hasUnread(chat) || isLater(chat)"
-                                    class="chat-item-dots"
-                                >
-                                    <span
-                                        v-if="hasUnread(chat)"
-                                        class="unread-dot"
-                                        aria-label="Unread messages"
-                                        title="Unread messages"
-                                    ></span>
-                                    <span
-                                        v-if="isLater(chat)"
-                                        class="unread-dot later"
-                                        aria-label="Reply later"
-                                        title="Marked to reply later"
-                                    ></span>
+                                <span v-if="hasUnread(chat) || isLater(chat)" class="chat-item-dots">
+                                    <span v-if="hasUnread(chat)" class="unread-dot" aria-label="Unread messages"
+                                        title="Unread messages"></span>
+                                    <span v-if="isLater(chat)" class="unread-dot later" aria-label="Reply later"
+                                        title="Marked to reply later"></span>
+                                </span>
+                            </router-link>
+                        </li>
+                        <li v-if="otherChats.length" class="chat-section-label chat-section-label--other">Other Chats
+                        </li>
+                        <li v-for="chat of otherChats" :key="'other-' + chat.url" class="chat-item">
+                            <router-link :to="`/chat/${chat.value.channel}`" class="chat-item-link"
+                                active-class="active">
+                                <span class="chat-name">{{ chat.value.title }}</span>
+                                <span v-if="hasUnread(chat) || isLater(chat)" class="chat-item-dots">
+                                    <span v-if="hasUnread(chat)" class="unread-dot" aria-label="Unread messages"
+                                        title="Unread messages"></span>
+                                    <span v-if="isLater(chat)" class="unread-dot later" aria-label="Reply later"
+                                        title="Marked to reply later"></span>
                                 </span>
                             </router-link>
                         </li>
                     </ul>
                 </nav>
 
-                <footer
-                    v-if="$graffitiSession.value"
-                    id="sidebar-footer"
-                >
-                    <button
-                        type="button"
-                        id="sorted-btn"
-                        @click="openSorted()"
-                        title="Sort chats by status"
-                    >
+                <footer v-if="$graffitiSession.value" id="sidebar-footer">
+                    <button type="button" id="sorted-btn" @click="openSorted()" title="Sort chats by status">
                         Sorted
                     </button>
-                    <button
-                        type="button"
-                        id="calendar-btn"
-                        @click="openCalendar()"
-                        title="Open the calendar"
-                    >
+                    <button type="button" id="calendar-btn" @click="openCalendar()" title="Open the calendar">
                         Calendar
                     </button>
+                    <button type="button" id="schedule-send-btn"
+                        :disabled="!activeChat || !myMessage.trim() || isScheduleSending" :title="!activeChat
+                            ? 'Select a chat first'
+                            : !myMessage.trim()
+                                ? 'Type a message first'
+                                : 'Schedule this message to send later'" @click="openScheduleSendDialog()">
+                        <span class="schedule-send-btn-icon" aria-hidden="true">&#128197;</span>
+                        <span class="schedule-send-btn-label">Schedule Send</span>
+                    </button>
                     <div id="later-button-row">
-                        <button
-                            type="button"
-                            id="later-btn"
-                            :class="{ active: isActiveChatLater }"
-                            :disabled="!activeChat || isMarkingLater || isActiveChatLater"
-                            :title="!activeChat
-                                ? 'Select a chat to mark it for later'
-                                : isActiveChatLater
-                                    ? 'This chat is already marked. Click the chip in the header to clear.'
-                                    : 'Remind yourself to reply to this chat later'"
-                            @click="markChatAsLater()"
-                        >
+                        <button type="button" id="later-btn"
+                            :class="{ active: selectedMessage && isMessageLater(selectedMessage) }"
+                            :disabled="!activeChat || !selectedMessage || isMarkingLater || isUnmarkingLater" :title="!activeChat
+                                ? 'Select a chat first'
+                                : !selectedMessage
+                                    ? 'Long-press a message to select it'
+                                    : selectedMessage && isMessageLater(selectedMessage)
+                                        ? 'Click to unmark this message'
+                                        : 'Mark this message to reply later'" @click="toggleMessageLater()">
                             <span class="later-btn-dot" aria-hidden="true"></span>
                             <span class="later-btn-label">
                                 {{ isMarkingLater
-                                    ? "Marking..."
-                                    : isActiveChatLater
-                                        ? "Marked"
-                                        : "Later" }}
+                                ? "Marking..."
+                                : isUnmarkingLater
+                                ? "Unmarking..."
+                                : selectedMessage && isMessageLater(selectedMessage)
+                                ? "Unmark"
+                                : "Reply Later" }}
                             </span>
                         </button>
-                        <button
-                            type="button"
-                            id="schedule-btn"
-                            :disabled="!activeChat || isScheduling"
-                            :title="!activeChat
-                                ? 'Select a chat to schedule a reply'
-                                : 'Schedule a reply at a specific time'"
-                            @click="openScheduleDialog()"
-                        >
+                        <button type="button" id="schedule-btn"
+                            :disabled="!activeChat || !selectedMessage || isScheduling" :title="!activeChat
+                                ? 'Select a chat first'
+                                : !selectedMessage
+                                    ? 'Long-press a message to select it'
+                                    : 'Schedule a reply at a specific time'" @click="openScheduleDialog()">
                             <span class="schedule-btn-icon" aria-hidden="true">&#128197;</span>
-                            <span class="schedule-btn-label">Schedule</span>
+                            <span class="schedule-btn-label">Remind Me to Reply</span>
                         </button>
                     </div>
                 </footer>
@@ -177,196 +159,164 @@
 
             <main id="chat-window">
                 <header id="chat-header">
-                    <h1>{{ activeChat ? activeChat.value.title : "Messages" }}</h1>
-                    <span
-                        v-if="activeScheduledLabel"
-                        id="scheduled-indicator"
+                    <div class="chat-header-title-row">
+                        <button type="button" class="layout-toggle-btn" @click="toggleSidebar()" title="Toggle Chats">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                                xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="4" width="18" height="16" rx="2" ry="2"></rect>
+                                <line x1="9" y1="4" x2="9" y2="20"></line>
+                                <path v-if="!isSidebarCollapsed"
+                                    d="M3 6C3 4.89543 3.89543 4 5 4H9V20H5C3.89543 20 3 19.1046 3 18V6Z"
+                                    fill="currentColor" stroke="none"></path>
+                            </svg>
+                        </button>
+                        <h1>{{ activeChat ? activeChat.value.title : "Messages" }}</h1>
+                    </div>
+                    <span v-if="activeScheduledLabel" id="scheduled-indicator"
                         :title="`Scheduled reply for ${activeScheduledLabel}`"
-                        :aria-label="`Scheduled reply for ${activeScheduledLabel}`"
-                    >
+                        :aria-label="`Scheduled reply for ${activeScheduledLabel}`">
                         <span class="scheduled-indicator-icon" aria-hidden="true">&#128197;</span>
                         <span class="scheduled-indicator-label">
                             Scheduled for {{ activeScheduledLabel }}
                         </span>
                     </span>
-                    <button
-                        v-if="isActiveChatLater"
-                        type="button"
-                        id="later-indicator"
-                        @click="clearLater(activeChat.value.channel)"
-                        title="You marked this chat to reply later. Click to clear."
-                        aria-label="Reply-later reminder. Click to clear."
-                    >
+                    <span v-if="activeChatLaterCount > 0" id="later-indicator"
+                        :title="`${activeChatLaterCount} message${activeChatLaterCount === 1 ? '' : 's'} to reply to later`"
+                        :aria-label="`${activeChatLaterCount} message${activeChatLaterCount === 1 ? '' : 's'} to reply to later`">
                         <span class="later-indicator-dot" aria-hidden="true"></span>
-                        <span class="later-indicator-label">Dismiss later reminder</span>
-                    </button>
+                        <span class="later-indicator-label">
+                            {{ activeChatLaterCount }} Message{{ activeChatLaterCount === 1 ? '' : 's' }} to Reply to
+                            Later
+                        </span>
+                    </span>
                 </header>
 
                 <section v-if="activeChat" id="members-panel">
                     <div id="members-header">
                         <h2>Members</h2>
-                        <button
-                            type="button"
-                            id="leave-chat-btn"
-                            @click="requestLeaveChat()"
-                        >
+                        <button type="button" id="leave-chat-btn" @click="requestLeaveChat()">
                             Leave chat
                         </button>
                     </div>
                     <ul id="member-list">
-                        <li
-                            v-for="actor of (activeChat.value.members ?? [])"
-                            :key="actor"
-                            class="member-item"
-                        >
-                            <graffiti-actor-to-handle
-                                :actor="actor"
-                                v-slot="{ handle }"
-                            >{{ displayHandle(handle) }}</graffiti-actor-to-handle>
-                            <span
-                                v-if="actor === $graffitiSession.value?.actor"
-                                class="member-tag"
-                            >you</span>
+                        <li v-for="actor of (activeChat.value.members ?? [])" :key="actor" class="member-item">
+                            <graffiti-actor-to-handle :actor="actor" v-slot="{ handle }">{{ displayHandle(handle)
+                                }}</graffiti-actor-to-handle>
+                            <span v-if="actor === $graffitiSession.value?.actor" class="member-tag">you</span>
                         </li>
                     </ul>
 
-                    <form
-                        v-if="isActiveChatOwner"
-                        id="add-member-form"
-                        @submit.prevent="addUserToChat()"
-                    >
-                        <input
-                            type="text"
-                            id="add-member-input"
-                            v-model="newMemberHandle"
-                            placeholder="Add user by username..."
-                            :disabled="isAddingMember"
-                        >
-                        <button
-                            type="submit"
-                            id="add-member-btn"
-                            :disabled="!newMemberHandle || isAddingMember"
-                        >
+                    <form v-if="isActiveChatOwner" id="add-member-form" @submit.prevent="addUserToChat()">
+                        <input type="text" id="add-member-input" v-model="newMemberHandle"
+                            placeholder="Add user by username..." :disabled="isAddingMember">
+                        <button type="submit" id="add-member-btn" :disabled="!newMemberHandle || isAddingMember">
                             {{ isAddingMember ? "Adding..." : "Add" }}
                         </button>
                     </form>
                     <transition name="form-error">
-                        <p
-                            v-if="addMemberError"
-                            class="form-error"
-                            role="alert"
-                            aria-live="polite"
-                        >
+                        <p v-if="addMemberError" class="form-error" role="alert" aria-live="polite">
                             {{ addMemberError }}
                         </p>
                     </transition>
                 </section>
 
-                <section
-                    id="messages"
-                    ref="messagesEl"
-                    @scroll.passive="onMessagesScroll"
-                >
+                <section id="messages" ref="messagesEl" @scroll.passive="onMessagesScroll"
+                    @click.self="deselectMessage()">
                     <p v-if="!activeChannel" class="empty-state">
                         Select a chat to start messaging.
                     </p>
-                    <p
-                        v-else-if="!$graffitiSession.value"
-                        class="empty-state"
-                    >
+                    <p v-else-if="!$graffitiSession.value" class="empty-state">
                         Log in to view this chat.
                     </p>
-                    <p
-                        v-else-if="areChatsLoading"
-                        class="empty-state"
-                    >
+                    <p v-else-if="areChatsLoading" class="empty-state">
                         <em>Loading chat...</em>
                     </p>
-                    <p
-                        v-else-if="isActiveChatMissing"
-                        class="empty-state chat-not-found"
-                    >
+                    <p v-else-if="isActiveChatMissing" class="empty-state chat-not-found">
                         This chat doesn't exist, or you don't have access to it.
                     </p>
-                    <p
-                        v-else-if="areMessagesLoading"
-                        class="empty-state"
-                    >
+                    <p v-else-if="areMessagesLoading" class="empty-state">
                         <em>Loading messages...</em>
                     </p>
-                    <p
-                        v-else-if="sortedMessages.length === 0"
-                        class="empty-state"
-                    >
+                    <p v-else-if="sortedMessages.length === 0" class="empty-state">
                         No messages yet. Say hello.
                     </p>
-                    <ul v-else id="message-list">
-                        <li
-                            v-for="message of sortedMessages"
-                            :key="message.url"
-                            class="message"
-                            :class="{ mine: message.actor === $graffitiSession.value?.actor }"
-                        >
+                    <ul v-else id="message-list" @click.self="deselectMessage()">
+                        <li v-for="message of sortedMessages" :key="message.url" class="message" :class="{
+                                mine: message.actor === $graffitiSession.value?.actor,
+                                selected: isMessageSelected(message),
+                                'has-later': isMessageLater(message),
+                            }" @mousedown.prevent="onMessagePressStart(message, $event)" @mouseup="onMessagePressEnd()"
+                            @mouseleave="onMessagePressCancel()"
+                            @touchstart.prevent="onMessagePressStart(message, $event)" @touchend="onMessagePressEnd()"
+                            @touchcancel="onMessagePressCancel()">
+                            <span v-if="isMessageSelected(message)" class="message-select-bubble" aria-label="Selected">
+                                &#10003;
+                            </span>
+                            <span v-if="isMessageLater(message)" class="message-later-dot" aria-label="Marked for later"
+                                title="Reply later"></span>
+                            <button v-if="message.value.inReplyTo" class="message-reply-indicator"
+                                @click.stop="scrollToMessage(message.value.inReplyTo)" title="Go to replied message">
+                                <span class="reply-indicator-arrow" aria-hidden="true">&#8617;</span>
+                                <span class="reply-indicator-text">
+                                    Replied to
+                                    <graffiti-actor-to-handle v-if="getMessageByUrl(message.value.inReplyTo)"
+                                        :actor="getMessageByUrl(message.value.inReplyTo).actor" v-slot="{ handle }">{{
+                                        displayHandle(handle) }}</graffiti-actor-to-handle>
+                                    <template v-else>a message</template>
+                                </span>
+                            </button>
                             <div class="message-meta">
                                 <strong class="message-author">
-                                    <graffiti-actor-to-handle
-                                        :actor="message.actor"
-                                        v-slot="{ handle }"
-                                    >{{ displayHandle(handle) }}</graffiti-actor-to-handle>
+                                    <graffiti-actor-to-handle :actor="message.actor" v-slot="{ handle }">{{
+                                        displayHandle(handle) }}</graffiti-actor-to-handle>
                                 </strong>
                                 <span class="message-time">
                                     {{ new Date(message.value.published).toLocaleString() }}
                                 </span>
                             </div>
                             <p class="message-text">{{ message.value.content }}</p>
-                            <button
-                                v-if="message.actor === $graffitiSession.value?.actor"
-                                class="message-delete"
-                                @click="deleteMessage(message)"
-                                :disabled="isDeleting.has(message.url)"
-                            >
+                            <button v-if="message.actor === $graffitiSession.value?.actor" class="message-delete"
+                                @click="deleteMessage(message)" :disabled="isDeleting.has(message.url)">
                                 {{ isDeleting.has(message.url) ? "Deleting..." : "Delete" }}
                             </button>
-                            <reaction
-                                v-if="$graffitiSession.value && activeChat"
-                                :message="message"
-                                :chat="activeChat"
-                            ></reaction>
+                            <div class="message-actions-hover">
+                                <button type="button" class="message-reply-btn" @click.stop="startReply(message)"
+                                    aria-label="Reply to this message" title="Reply">
+                                    <span aria-hidden="true">&#8617;</span>
+                                </button>
+                            </div>
+                            <reaction v-if="$graffitiSession.value && activeChat" :message="message" :chat="activeChat">
+                            </reaction>
                         </li>
                     </ul>
                 </section>
 
                 <footer id="chat-footer" v-if="activeChat">
+                    <div v-if="replyingTo" class="reply-banner">
+                        <div class="reply-banner-content">
+                            <span class="reply-banner-label">
+                                Replying to
+                                <graffiti-actor-to-handle :actor="replyingTo.actor" v-slot="{ handle }"><strong>{{
+                                        displayHandle(handle) }}</strong></graffiti-actor-to-handle>
+                            </span>
+                            <p class="reply-banner-preview">{{ replyingTo.value.content }}</p>
+                        </div>
+                        <button type="button" class="reply-banner-close" @click="cancelReply()"
+                            aria-label="Cancel reply">&times;</button>
+                    </div>
                     <form id="message-form" @submit.prevent="sendMessage()">
-                        <input
-                            type="text"
-                            id="message-input"
-                            v-model="myMessage"
-                            placeholder="Type a message..."
-                            :disabled="isSending"
-                        >
-                        <button
-                            type="submit"
-                            id="send-btn"
-                            :disabled="!myMessage || isSending"
-                        >
+                        <input type="text" id="message-input" v-model="myMessage" placeholder="Type a message..."
+                            :disabled="isSending">
+                        <button type="submit" id="send-btn" :disabled="!myMessage || isSending">
                             {{ isSending ? "Sending..." : "Send" }}
                         </button>
                     </form>
                 </footer>
             </main>
 
-            <div
-                v-if="isLeaveDialogOpen"
-                id="leave-modal-backdrop"
-                @click.self="cancelLeaveChat()"
-            >
-                <div
-                    class="leave-modal"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="leave-modal-title"
-                >
+            <div v-if="isLeaveDialogOpen" id="leave-modal-backdrop" @click.self="cancelLeaveChat()">
+                <div class="leave-modal" role="dialog" aria-modal="true" aria-labelledby="leave-modal-title">
                     <h2 id="leave-modal-title">Leave this chat?</h2>
                     <p class="leave-modal-body">
                         Are you sure you want to leave
@@ -374,99 +324,56 @@
                         You won't see new messages from this chat anymore.
                     </p>
                     <div class="leave-modal-actions">
-                        <button
-                            type="button"
-                            class="leave-modal-cancel"
-                            @click="cancelLeaveChat()"
-                            :disabled="isLeavingChat"
-                        >
+                        <button type="button" class="leave-modal-cancel" @click="cancelLeaveChat()"
+                            :disabled="isLeavingChat">
                             Cancel
                         </button>
-                        <button
-                            type="button"
-                            class="leave-modal-confirm"
-                            @click="confirmLeaveChat()"
-                            :disabled="isLeavingChat"
-                        >
+                        <button type="button" class="leave-modal-confirm" @click="confirmLeaveChat()"
+                            :disabled="isLeavingChat">
                             {{ isLeavingChat ? "Leaving..." : "Leave chat" }}
                         </button>
                     </div>
                 </div>
             </div>
 
-            <div
-                v-if="isScheduleDialogOpen"
-                id="schedule-modal-backdrop"
-                @click.self="cancelSchedule()"
-            >
-                <div
-                    class="schedule-modal"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="schedule-modal-title"
-                >
+            <div v-if="isScheduleDialogOpen" id="schedule-modal-backdrop" @click.self="cancelSchedule()">
+                <div class="schedule-modal" role="dialog" aria-modal="true" aria-labelledby="schedule-modal-title">
                     <header class="schedule-modal-header">
                         <h2 id="schedule-modal-title">
                             {{ scheduleStep === 'date'
-                                ? 'Pick a date'
-                                : 'Pick a time' }}
+                            ? 'Pick a date'
+                            : 'Pick a time' }}
                         </h2>
-                        <button
-                            type="button"
-                            class="schedule-modal-close"
-                            @click="cancelSchedule()"
-                            :disabled="isScheduling"
-                            aria-label="Close"
-                        >
+                        <button type="button" class="schedule-modal-close" @click="cancelSchedule()"
+                            :disabled="isScheduling" aria-label="Close">
                             &times;
                         </button>
                     </header>
 
-                    <div
-                        v-if="scheduleStep === 'date'"
-                        class="schedule-modal-body"
-                    >
+                    <div v-if="scheduleStep === 'date'" class="schedule-modal-body">
                         <div class="schedule-month-nav">
-                            <button
-                                type="button"
-                                class="calendar-step-btn"
-                                @click="scheduleStepPrevMonth()"
-                                aria-label="Previous month"
-                            >
+                            <button type="button" class="calendar-step-btn" @click="scheduleStepPrevMonth()"
+                                aria-label="Previous month">
                                 &lsaquo;
                             </button>
                             <span class="schedule-month-title">
                                 {{ scheduleMonthTitle }}
                             </span>
-                            <button
-                                type="button"
-                                class="calendar-step-btn"
-                                @click="scheduleStepNextMonth()"
-                                aria-label="Next month"
-                            >
+                            <button type="button" class="calendar-step-btn" @click="scheduleStepNextMonth()"
+                                aria-label="Next month">
                                 &rsaquo;
                             </button>
                         </div>
                         <div class="schedule-mini-month">
-                            <div
-                                v-for="label of weekdayLabels"
-                                :key="label"
-                                class="schedule-mini-weekday"
-                            >
+                            <div v-for="label of weekdayLabels" :key="label" class="schedule-mini-weekday">
                                 {{ label }}
                             </div>
-                            <button
-                                v-for="cell of scheduleMonthGrid"
-                                :key="cell.key"
-                                type="button"
-                                class="schedule-mini-day"
-                                :class="{
+                            <button v-for="cell of scheduleMonthGrid" :key="cell.key" type="button"
+                                class="schedule-mini-day" :class="{
                                     'other-month': !cell.inMonth,
                                     today: cell.isToday,
                                     focal: cell.isFocal,
-                                }"
-                                @click="pickScheduleDate(cell)"
-                            >
+                                }" @click="pickScheduleDate(cell)">
                                 {{ cell.day }}
                             </button>
                         </div>
@@ -476,68 +383,104 @@
                         <p class="schedule-time-prompt">
                             Reply on <strong>{{ pickedDateLabel }}</strong>
                         </p>
-                        <input
-                            type="time"
-                            class="schedule-time-input"
-                            v-model="scheduleTime"
-                            :disabled="isScheduling"
-                        >
+                        <input type="time" class="schedule-time-input" v-model="scheduleTime" :disabled="isScheduling">
                     </div>
 
                     <footer class="schedule-modal-actions">
-                        <button
-                            v-if="scheduleStep === 'time'"
-                            type="button"
-                            class="schedule-back-btn"
-                            @click="backToScheduleDate()"
-                            :disabled="isScheduling"
-                        >
+                        <button v-if="scheduleStep === 'time'" type="button" class="schedule-back-btn"
+                            @click="backToScheduleDate()" :disabled="isScheduling">
                             Back
                         </button>
                         <span class="schedule-modal-spacer"></span>
-                        <button
-                            type="button"
-                            class="schedule-cancel-btn"
-                            @click="cancelSchedule()"
-                            :disabled="isScheduling"
-                        >
+                        <button type="button" class="schedule-cancel-btn" @click="cancelSchedule()"
+                            :disabled="isScheduling">
                             Cancel
                         </button>
-                        <button
-                            v-if="scheduleStep === 'time'"
-                            type="button"
-                            class="schedule-confirm-btn"
-                            @click="confirmSchedule()"
-                            :disabled="isScheduling || !scheduleTime"
-                        >
+                        <button v-if="scheduleStep === 'time'" type="button" class="schedule-confirm-btn"
+                            @click="confirmSchedule()" :disabled="isScheduling || !scheduleTime">
                             {{ isScheduling ? "Scheduling..." : "Schedule" }}
                         </button>
                     </footer>
                 </div>
             </div>
 
-            <div
-                v-if="pendingDeleteList.length"
-                id="undo-toasts"
-                aria-live="polite"
-            >
-                <div
-                    v-for="entry of pendingDeleteList"
-                    :key="entry.url"
-                    class="undo-toast"
-                >
+            <div v-if="isScheduleSendDialogOpen" id="schedule-send-modal-backdrop" @click.self="cancelScheduleSend()">
+                <div class="schedule-send-modal" role="dialog" aria-modal="true"
+                    aria-labelledby="schedule-send-modal-title">
+                    <header class="schedule-send-modal-header">
+                        <h2 id="schedule-send-modal-title">
+                            {{ scheduleSendStep === 'date'
+                            ? 'Schedule Send \u2014 Pick a date'
+                            : 'Schedule Send \u2014 Pick a time' }}
+                        </h2>
+                        <button type="button" class="schedule-send-modal-close" @click="cancelScheduleSend()"
+                            :disabled="isScheduleSending" aria-label="Close">
+                            &times;
+                        </button>
+                    </header>
+
+                    <div v-if="scheduleSendStep === 'date'" class="schedule-send-modal-body">
+                        <div class="schedule-send-month-nav">
+                            <button type="button" class="calendar-step-btn" @click="scheduleSendStepPrevMonth()"
+                                aria-label="Previous month">
+                                &lsaquo;
+                            </button>
+                            <span class="schedule-send-month-title">
+                                {{ scheduleSendMonthTitle }}
+                            </span>
+                            <button type="button" class="calendar-step-btn" @click="scheduleSendStepNextMonth()"
+                                aria-label="Next month">
+                                &rsaquo;
+                            </button>
+                        </div>
+                        <div class="schedule-send-mini-month">
+                            <div v-for="label of weekdayLabels" :key="label" class="schedule-mini-weekday">
+                                {{ label }}
+                            </div>
+                            <button v-for="cell of scheduleSendMonthGrid" :key="cell.key" type="button"
+                                class="schedule-send-mini-day" :class="{
+                                    'other-month': !cell.inMonth,
+                                    today: cell.isToday,
+                                    focal: cell.isFocal,
+                                }" @click="pickScheduleSendDate(cell)">
+                                {{ cell.day }}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div v-else class="schedule-send-modal-body">
+                        <p class="schedule-send-time-prompt">
+                            Send on <strong>{{ scheduleSendPickedDateLabel }}</strong>
+                        </p>
+                        <input type="time" class="schedule-send-time-input" v-model="scheduleSendTime"
+                            :disabled="isScheduleSending">
+                    </div>
+
+                    <footer class="schedule-send-modal-actions">
+                        <button v-if="scheduleSendStep === 'time'" type="button" class="schedule-send-back-btn"
+                            @click="backToScheduleSendDate()" :disabled="isScheduleSending">
+                            Back
+                        </button>
+                        <span class="schedule-send-modal-spacer"></span>
+                        <button type="button" class="schedule-send-cancel-btn" @click="cancelScheduleSend()"
+                            :disabled="isScheduleSending">
+                            Cancel
+                        </button>
+                        <button v-if="scheduleSendStep === 'time'" type="button" class="schedule-send-confirm-btn"
+                            @click="confirmScheduleSend()" :disabled="isScheduleSending || !scheduleSendTime">
+                            {{ isScheduleSending ? "Scheduling..." : "Schedule Send" }}
+                        </button>
+                    </footer>
+                </div>
+            </div>
+
+            <div v-if="pendingDeleteList.length" id="undo-toasts" aria-live="polite">
+                <div v-for="entry of pendingDeleteList" :key="entry.url" class="undo-toast">
                     <span class="undo-toast-text">Message deleted</span>
-                    <button
-                        type="button"
-                        class="undo-toast-btn"
-                        @click="undoDelete(entry.url)"
-                    >
+                    <button type="button" class="undo-toast-btn" @click="undoDelete(entry.url)">
                         Undo
                     </button>
-                    <span
-                        class="undo-toast-progress"
-                        :style="{ animationDuration: UNDO_DELETE_MS + 'ms' }"
-                    ></span>
+                    <span class="undo-toast-progress" :style="{ animationDuration: UNDO_DELETE_MS + 'ms' }"></span>
                 </div>
             </div>
         </div>
@@ -545,4 +488,5 @@
         <router-view v-else />
     </template>
 </body>
+
 </html>

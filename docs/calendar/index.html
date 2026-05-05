@@ -93,14 +93,16 @@
                         :key="event.laterUrl"
                         type="button"
                         class="calendar-day-event"
-                        :title="`${formatTime(event.scheduledFor)} \u2014 ${event.title}`"
-                        @click.stop="openChatFromCalendar(event.channel)"
+                        :class="{ 'schedule-send': event.type === 'send' }"
+                        :title="`${formatTime(event.scheduledFor)} \u2014 ${event.type === 'send' ? '\u{1F4E8} Send: ' : ''}${event.messagePreview || event.title}`"
+                        @click.stop="openChatFromCalendar(event.channel, event.messageUrl)"
                     >
                         <span class="calendar-day-event-time">
                             {{ formatTime(event.scheduledFor) }}
                         </span>
+                        <span v-if="event.type === 'send'" class="calendar-day-event-send-tag">Send</span>
                         <span class="calendar-day-event-title">
-                            {{ event.title }}
+                            {{ event.messagePreview || event.title }}
                         </span>
                     </button>
                 </div>
@@ -120,14 +122,16 @@
                         :key="event.laterUrl"
                         type="button"
                         class="calendar-hour-event"
-                        :title="`${formatTime(event.scheduledFor)} \u2014 ${event.title}`"
-                        @click="openChatFromCalendar(event.channel)"
+                        :class="{ 'schedule-send': event.type === 'send' }"
+                        :title="`${formatTime(event.scheduledFor)} \u2014 ${event.type === 'send' ? '\u{1F4E8} Send: ' : ''}${event.messagePreview || event.title}`"
+                        @click="openChatFromCalendar(event.channel, event.messageUrl)"
                     >
                         <span class="calendar-hour-event-time">
                             {{ formatTime(event.scheduledFor) }}
                         </span>
+                        <span v-if="event.type === 'send'" class="calendar-hour-event-send-tag">Send</span>
                         <span class="calendar-hour-event-title">
-                            {{ event.title }}
+                            {{ event.messagePreview || event.title }}
                         </span>
                     </button>
                 </div>

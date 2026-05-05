@@ -46,7 +46,7 @@
 
 #sorted-board {
     display: grid;
-    grid-template-columns: repeat(4, minmax(220px, 1fr));
+    grid-template-columns: repeat(3, minmax(220px, 1fr));
     gap: 1rem;
     align-items: start;
     min-height: 100%;
@@ -116,15 +116,6 @@
 
 .sorted-column-later-header h2 {
     color: #1b5e2b;
-}
-
-.sorted-column-read-header {
-    background: #f0f0f3;
-    border-bottom-color: #d2d2d7;
-}
-
-.sorted-column-read-header h2 {
-    color: #3a3a3c;
 }
 
 .sorted-column-list {
@@ -208,6 +199,10 @@
 
 .sorted-card-dot.later {
     background: #34c759;
+}
+
+.sorted-card-dot.past-due {
+    background: #ff3b30;
 }
 
 .sorted-card-meta {

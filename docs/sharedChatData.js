@@ -93,7 +93,10 @@ export const LEAVE_SCHEMA = {
 };
 
 // Per-user "Later" marker. Posted privately in the user's own inbox
-// (channels: [actor], allowed: []) with `target` = chat channel.
+// (channels: [actor], allowed: []) with `target` = message URL,
+// `targetChannel` = the chat channel the message belongs to, and
+// `messagePreview` = a short snippet of the message text (for
+// calendar/sorted display without needing to re-fetch the message).
 //
 // `scheduledFor` is optional: a plain Later marker omits it (free-form
 // "when I get to it" reminder), while a Schedule marker sets it to a
@@ -105,12 +108,44 @@ export const LATER_SCHEMA = {
   properties: {
     value: {
       type: "object",
-      required: ["activity", "target", "published"],
+      required: ["activity", "target", "targetChannel", "messagePreview", "published"],
       properties: {
         activity: { const: "Later" },
         target: { type: "string" },
+        targetChannel: { type: "string" },
+        messagePreview: { type: "string" },
         published: { type: "number" },
         scheduledFor: { type: "number" },
+      },
+    },
+  },
+};
+
+// Per-user "ScheduleSend" marker. Posted privately in the user's own
+// inbox (channels: [actor], allowed: []) with `content` = the message
+// text to be sent, `targetChannel` = the chat's random channel, and
+// `scheduledFor` = the UTC-ms timestamp at which the message should
+// be delivered. When the scheduled time arrives, the app auto-sends
+// the message via `sendMessageToChat` and deletes this marker.
+export const SCHEDULED_SEND_SCHEMA = {
+  properties: {
+    value: {
+      type: "object",
+      required: [
+        "activity",
+        "type",
+        "content",
+        "targetChannel",
+        "scheduledFor",
+        "published",
+      ],
+      properties: {
+        activity: { const: "ScheduleSend" },
+        type: { const: "ScheduledMessage" },
+        content: { type: "string" },
+        targetChannel: { type: "string" },
+        scheduledFor: { type: "number" },
+        published: { type: "number" },
       },
     },
   },
@@ -318,22 +353,154 @@ export function useSharedChatData() {
       () => session.value,
     );
 
+    // Per-user ScheduleSend markers. Each represents a message
+    // queued for future delivery. When `scheduledFor` passes, the
+    // auto-send timer in chat.js executes the send and deletes
+    // the marker.
+    const { objects: scheduledSendObjects } = useGraffitiDiscover(
+      () => (session.value ? [session.value.actor] : []),
+      SCHEDULED_SEND_SCHEMA,
+      () => session.value,
+    );
+
     // ---- Derived state ---------------------------------------------
 
     const leftChannels = computed(
       () => new Set(leaveObjects.value.map((o) => o.value.target)),
     );
 
+    // Derive from targetChannel (the chat channel) so the sidebar's
+    // green dot still lights up for any chat containing a later-
+    // marked message.
     const laterChannels = computed(
+      () => new Set(laterObjects.value.map((o) => o.value.targetChannel)),
+    );
+
+    // Set of message URLs currently marked for later — drives the
+    // green dot rendered next to individual messages in the chat.
+    const laterMessageUrls = computed(
       () => new Set(laterObjects.value.map((o) => o.value.target)),
     );
 
+    // Map<messageUrl, LaterObject[]> for quick lookup when toggling
+    // or clearing a specific message's later state.
+    const laterObjectsByMessageUrl = computed(() => {
+      const map = new Map();
+      for (const o of laterObjects.value) {
+        const url = o.value.target;
+        const list = map.get(url);
+        if (list) list.push(o);
+        else map.set(url, [o]);
+      }
+      return map;
+    });
+
+    // Map<channel, number> — count of later-marked messages per chat.
+    // Drives the "# Messages to Reply to Later" header chip.
+    const laterCountByChannel = computed(() => {
+      const map = new Map();
+      for (const o of laterObjects.value) {
+        const ch = o.value.targetChannel;
+        map.set(ch, (map.get(ch) ?? 0) + 1);
+      }
+      return map;
+    });
+
+    // Highest `published` per chat channel from ANY sender (including
+    // the logged-in user). Used to define "recency" for sorting the
+    // sidebar. Falls back to the chat's own `published` timestamp
+    // (creation time) so brand-new chats without messages still sort
+    // sensibly.
+    const latestActivityByChannel = computed(() => {
+      const map = new Map();
+      for (const m of allMessageObjects.value) {
+        const ts = m.value.published;
+        for (const ch of m.channels ?? []) {
+          const existing = map.get(ch) ?? 0;
+          if (ts > existing) map.set(ch, ts);
+        }
+      }
+      return map;
+    });
+
+    // Set of channels that have at least one pending ScheduleSend.
+    const scheduledSendChannels = computed(
+      () => new Set(scheduledSendObjects.value.map((o) => o.value.targetChannel)),
+    );
+
+    // True when a chat has a scheduled-send marker targeting it.
+    function hasScheduledSend(chat) {
+      return scheduledSendChannels.value.has(chat.value.channel);
+    }
+
+    // Helper: recency timestamp for a chat (latest message from anyone,
+    // falling back to the chat creation timestamp).
+    function chatActivity(chat) {
+      return latestActivityByChannel.value.get(chat.value.channel)
+        ?? chat.value.published;
+    }
+
     // Most-recent chats first, excluding ones the user has left.
+    // Sorted by creation time — deliberately NOT by message activity,
+    // because `allChatChannels` (which drives the message discovery)
+    // depends on this list. If we sorted by activity here, we'd
+    // create a circular dependency:
+    //   sortedChats → latestActivityByChannel → allMessageObjects
+    //   → allChatChannels → sortedChats
+    // which can prevent `isFirstPoll` from ever flipping to false.
     const sortedChats = computed(() =>
       chats.value
         .filter((c) => !leftChannels.value.has(c.value.channel))
         .toSorted((a, b) => b.value.published - a.value.published),
     );
+
+    // ---- Two-section sidebar sorting --------------------------------
+    //
+    // These computed properties use `chatActivity` (which reads from
+    // allMessageObjects via latestActivityByChannel), but they are
+    // NOT in the dependency chain that feeds allChatChannels, so
+    // there is no circular dependency.
+    //
+    // Most Recent: top 3 chats by activity recency.
+    const recentChats = computed(() =>
+      sortedChats.value
+        .toSorted((a, b) => chatActivity(b) - chatActivity(a))
+        .slice(0, 3),
+    );
+
+    // Other Chats: every visible chat EXCEPT the top 3, ordered by
+    // category then recency within each category:
+    //   1. Chats with new (unread) messages
+    //   2. Chats with Later markers or ScheduledSend markers
+    //   3. Everything else
+    const otherChats = computed(() => {
+      const recentUrls = new Set(recentChats.value.map((c) => c.url));
+      const rest = sortedChats.value.filter((c) => !recentUrls.has(c.url));
+
+      const withNew = [];
+      const withLater = [];
+      const other = [];
+
+      for (const chat of rest) {
+        const unread = hasUnread(chat);
+        const later = isLater(chat) || hasScheduledSend(chat);
+        if (unread) {
+          withNew.push(chat);
+        } else if (later) {
+          withLater.push(chat);
+        } else {
+          other.push(chat);
+        }
+      }
+
+      // Sort each sub-array by activity recency.
+      const byActivity = (a, b) => chatActivity(b) - chatActivity(a);
+      withNew.sort(byActivity);
+      withLater.sort(byActivity);
+      other.sort(byActivity);
+
+      return [...withNew, ...withLater, ...other];
+    });
 
     // Channels the user is currently a member of (and hasn't left).
     // Used to gate message discovery: if the user opens
@@ -341,9 +508,26 @@ export function useSharedChatData() {
     // ends up here, so we never query for it — which keeps us from
     // broadcasting "this user is curious about that channel" just
     // because someone shared a URL with them.
-    const allChatChannels = computed(() =>
-      sortedChats.value.map((c) => c.value.channel),
-    );
+    //
+    // IMPORTANT: We stabilize the array reference so it only changes
+    // when the *actual set of channel strings* changes. Without this,
+    // every Graffiti autopoll gives `chats` new object references →
+    // `sortedChats` recomputes → a naïve `.map()` returns a new array
+    // reference → `useGraffitiDiscover` for messages & reactions
+    // interprets that as a parameter change → re-initializes its
+    // internal subscription → briefly clears its `objects` ref →
+    // messages and reactions visibly flicker in/out.
+
+    let _prevChannelKey = "";
+    let _prevChannels = [];
+    const allChatChannels = computed(() => {
+      const next = sortedChats.value.map((c) => c.value.channel);
+      const key = next.join("\0");
+      if (key === _prevChannelKey) return _prevChannels;
+      _prevChannelKey = key;
+      _prevChannels = next;
+      return next;
+    });
 
     // Messages across every chat the user belongs to in a single
     // autopolling query. We need the cross-chat view (rather than an
@@ -442,7 +626,7 @@ export function useSharedChatData() {
       for (const o of laterObjects.value) {
         const when = o.value.scheduledFor;
         if (typeof when !== "number") continue;
-        const channel = o.value.target;
+        const channel = o.value.targetChannel;
         const existing = map.get(channel);
         if (existing === undefined || when > existing) {
           map.set(channel, when);
@@ -451,10 +635,15 @@ export function useSharedChatData() {
       return map;
     });
 
-    // Map<dayKey, Array<{ laterUrl, channel, title, scheduledFor }>>.
+    // Map<dayKey, Array<{ laterUrl, channel, title, messagePreview, scheduledFor, type }>>.
     // Markers whose target chat the user has left (or has never had
     // access to) are skipped — the calendar shouldn't expose chats
     // the rest of the UI hides.
+    //
+    // Both reply-reminder and scheduled-send events are folded into
+    // the same map so the calendar renders them side by side. The
+    // `type` field ("reply" or "send") lets the UI distinguish them
+    // with different colors.
     const scheduledByDay = computed(() => {
       const map = new Map();
       const visibleChats = new Map(
@@ -462,22 +651,48 @@ export function useSharedChatData() {
           .filter((c) => !leftChannels.value.has(c.value.channel))
           .map((c) => [c.value.channel, c]),
       );
+
+      // Reply-reminder markers (Later objects with scheduledFor).
       for (const later of laterObjects.value) {
         const when = later.value.scheduledFor;
         if (typeof when !== "number") continue;
-        const chat = visibleChats.get(later.value.target);
+        const chat = visibleChats.get(later.value.targetChannel);
         if (!chat) continue;
         const key = dayKey(new Date(when));
         const entry = {
           laterUrl: later.url,
-          channel: later.value.target,
+          channel: later.value.targetChannel,
+          messageUrl: later.value.target,
           title: chat.value.title,
+          messagePreview: later.value.messagePreview,
           scheduledFor: when,
+          type: "reply",
         };
         const list = map.get(key);
         if (list) list.push(entry);
         else map.set(key, [entry]);
       }
+
+      // Scheduled-send markers.
+      for (const send of scheduledSendObjects.value) {
+        const when = send.value.scheduledFor;
+        if (typeof when !== "number") continue;
+        const chat = visibleChats.get(send.value.targetChannel);
+        if (!chat) continue;
+        const key = dayKey(new Date(when));
+        const entry = {
+          laterUrl: send.url,
+          channel: send.value.targetChannel,
+          title: chat.value.title,
+          messagePreview: send.value.content,
+          scheduledFor: when,
+          type: "send",
+        };
+        const list = map.get(key);
+        if (list) list.push(entry);
+        else map.set(key, [entry]);
+      }
+
       for (const arr of map.values()) {
         arr.sort((a, b) => a.scheduledFor - b.scheduledFor);
       }
@@ -495,60 +710,57 @@ export function useSharedChatData() {
     //
     // We pre-bucket `laterObjects` by channel so we don't rescan the
     // full marker list once per chat.
+    // Now message-level: each later marker becomes its own entry in
+    // the scheduled / plainLater columns (with a message preview),
+    // rather than one entry per chat. Chats with unread messages
+    // still bucket by chat.
     const sortedColumns = computed(() => {
       const newMessages = [];
       const scheduled = [];
       const plainLater = [];
-      const read = [];
 
       const latersByChannel = new Map();
       for (const o of laterObjects.value) {
-        const ch = o.value.target;
+        const ch = o.value.targetChannel;
         const list = latersByChannel.get(ch);
         if (list) list.push(o);
         else latersByChannel.set(ch, [o]);
       }
 
+      // Track which chats have any later/scheduled markers so we can
+      // still put the chat in the Read column if it has none.
+      const chatsWithLater = new Set();
+
+      // Build per-message entries for scheduled and plain-later columns.
+      for (const o of laterObjects.value) {
+        const ch = o.value.targetChannel;
+        const chat = sortedChats.value.find((c) => c.value.channel === ch);
+        if (!chat) continue;
+        chatsWithLater.add(ch);
+
+        if (typeof o.value.scheduledFor === "number") {
+          scheduled.push({
+            chat,
+            messagePreview: o.value.messagePreview,
+            messageUrl: o.value.target,
+            scheduledFor: o.value.scheduledFor,
+          });
+        } else {
+          plainLater.push({
+            chat,
+            messagePreview: o.value.messagePreview,
+            messageUrl: o.value.target,
+          });
+        }
+      }
+
       for (const chat of sortedChats.value) {
         const channel = chat.value.channel;
-        const laters = latersByChannel.get(channel) ?? [];
-
-        // Earliest upcoming scheduled-for wins so the card surfaces
-        // the next deadline, not whichever marker happens to be most
-        // recent.
-        let nextScheduledFor = null;
-        let hasPlainLater = false;
-        for (const o of laters) {
-          if (typeof o.value.scheduledFor === "number") {
-            if (
-              nextScheduledFor === null ||
-              o.value.scheduledFor < nextScheduledFor
-            ) {
-              nextScheduledFor = o.value.scheduledFor;
-            }
-          } else {
-            hasPlainLater = true;
-          }
-        }
-
         const isUnread = hasUnread(chat);
-        const isScheduled = nextScheduledFor !== null;
-        // A scheduled marker takes precedence over a plain later
-        // marker for column-placement purposes, mirroring the
-        // sidebar's "scheduled chip wins" treatment.
-        const isPlainLaterOnly = !isScheduled && hasPlainLater;
+        const hasAnyLater = chatsWithLater.has(channel);
 
-        if (isScheduled) {
-          scheduled.push({ chat, scheduledFor: nextScheduledFor });
-        }
-        if (isPlainLaterOnly) {
-          plainLater.push({ chat });
-        }
         if (isUnread) {
           newMessages.push({ chat });
-        }
-        if (!isUnread && !isScheduled && !isPlainLaterOnly) {
-          read.push({ chat });
         }
       }
 
@@ -556,7 +768,7 @@ export function useSharedChatData() {
       // sortedChats' "most recent activity first" ordering.
       scheduled.sort((a, b) => a.scheduledFor - b.scheduledFor);
 
-      return { newMessages, scheduled, plainLater, read };
+      return { newMessages, scheduled, plainLater };
     });
 
     // ---- Mutations -------------------------------------------------
@@ -566,18 +778,23 @@ export function useSharedChatData() {
     // flags and form state; they just await these and let the
     // discoveries above pick the change up reactively.
 
-    async function markChatAsLater(channel) {
-      if (!session.value || !channel) return;
+    // Mark a specific message for later. `messageUrl` is the Graffiti
+    // URL of the message object, `channel` is the chat it belongs to,
+    // `messagePreview` is a short snippet of its text content.
+    async function markMessageAsLater(messageUrl, channel, messagePreview) {
+      if (!session.value || !messageUrl || !channel) return;
       // No-op if already marked — rapid double-clicks shouldn't pile
       // up redundant objects.
-      if (laterChannels.value.has(channel)) return;
+      if (laterMessageUrls.value.has(messageUrl)) return;
       try {
         const now = Date.now();
         await graffiti.post(
           {
             value: {
               activity: "Later",
-              target: channel,
+              target: messageUrl,
+              targetChannel: channel,
+              messagePreview: messagePreview ?? "",
               published: now,
             },
             channels: [session.value.actor],
@@ -591,20 +808,30 @@ export function useSharedChatData() {
       }
     }
 
-    // Clear all Later markers for `channel`. We may have more than
-    // one (e.g. if a previous post happened to race), so delete every
-    // match.
-    //
-    // This is also the unified "dismiss" path for scheduled
-    // reminders: since a Schedule marker is just a Later marker with
-    // a `scheduledFor` field, deleting all Later markers for a
-    // channel removes the schedule too. That's why sending a message
-    // in a chat (which calls clearLater) makes a scheduled reminder
-    // disappear from the calendar.
+    // Clear all Later markers for a specific message URL.
+    async function clearMessageLater(messageUrl) {
+      if (!session.value || !messageUrl) return;
+      const matches = laterObjects.value.filter(
+        (o) => o.value.target === messageUrl,
+      );
+      await Promise.all(
+        matches.map(async (o) => {
+          try {
+            await graffiti.delete(o.url, session.value);
+          } catch {
+            // Ignore — the next discover poll will reflect reality.
+          }
+        }),
+      );
+    }
+
+    // Clear ALL Later markers for a given chat channel. Used when the
+    // user sends a message (replying satisfies the "remind me later"
+    // intent for every message in that chat).
     async function clearLater(channel) {
       if (!session.value || !channel) return;
       const matches = laterObjects.value.filter(
-        (o) => o.value.target === channel,
+        (o) => o.value.targetChannel === channel,
       );
       await Promise.all(
         matches.map(async (o) => {
@@ -640,17 +867,17 @@ export function useSharedChatData() {
       }
     }
 
-    // Schedule a reply for `channel` at the user-picked timestamp.
-    // Snapshots the prior markers BEFORE the post so the cleanup
-    // loop doesn't accidentally include the brand-new one (which
-    // appears in `laterObjects` reactively as soon as discover sees
-    // it).
-    async function scheduleLater(channel, when) {
-      if (!session.value || !channel) return;
+    // Schedule a reply for a specific message at the user-picked
+    // timestamp. Snapshots the prior markers for THIS MESSAGE
+    // BEFORE the post so the cleanup loop doesn't accidentally
+    // include the brand-new one (which appears in `laterObjects`
+    // reactively as soon as discover sees it).
+    async function scheduleLater(messageUrl, channel, messagePreview, when) {
+      if (!session.value || !messageUrl || !channel) return;
       if (typeof when !== "number") return;
 
       const priorMarkers = laterObjects.value.filter(
-        (o) => o.value.target === channel,
+        (o) => o.value.target === messageUrl,
       );
 
       const now = Date.now();
@@ -658,7 +885,9 @@ export function useSharedChatData() {
         {
           value: {
             activity: "Later",
-            target: channel,
+            target: messageUrl,
+            targetChannel: channel,
+            messagePreview: messagePreview ?? "",
             published: now,
             scheduledFor: when,
           },
@@ -674,7 +903,7 @@ export function useSharedChatData() {
             await graffiti.delete(o.url, session.value);
           } catch {
             // Best effort. Stale markers are harmless; the calendar
-            // dedupes by chat channel + scheduledFor anyway.
+            // dedupes by message + scheduledFor anyway.
           }
         }),
       );
@@ -718,21 +947,29 @@ export function useSharedChatData() {
     // list so exactly the people who can see the chat can also see
     // its messages.
     //
+    // `inReplyTo` is an optional Graffiti URL of the message being
+    // replied to. When present, the posted object includes an
+    // `inReplyTo` field that the UI uses to render reply indicators.
+    //
     // Replying satisfies the "remind me later" intent so we also
     // drop any outstanding Later markers for this channel.
-    async function sendMessageToChat(chat, text) {
+    async function sendMessageToChat(chat, text, inReplyTo) {
       if (!session.value || !chat) return;
       const cleaned = text?.trim();
       if (!cleaned) return;
       const channel = chat.value.channel;
+      const messageValue = {
+        activity: "Send",
+        type: "Message",
+        content: cleaned,
+        published: Date.now(),
+      };
+      if (inReplyTo) {
+        messageValue.inReplyTo = inReplyTo;
+      }
       await graffiti.post(
         {
-          value: {
-            activity: "Send",
-            type: "Message",
-            content: cleaned,
-            published: Date.now(),
-          },
+          value: messageValue,
           channels: [channel],
           // Read from value.members (visible to every member, unlike
           // the masked `allowed` list) so every member can see the
@@ -741,7 +978,11 @@ export function useSharedChatData() {
         },
         session.value,
       );
-      await clearLater(channel);
+      // If this was a direct reply to a specific message, clear any
+      // Later markers on that message (replying satisfies the intent).
+      if (inReplyTo && laterMessageUrls.value.has(inReplyTo)) {
+        await clearMessageLater(inReplyTo);
+      }
     }
 
     // Add a reaction to `message` inside `chat`. Posted in the chat's
@@ -914,6 +1155,57 @@ export function useSharedChatData() {
       );
     }
 
+    // ---- Scheduled Send mutations -----------------------------------
+
+    // Create a scheduled-send marker. The message `content` will be
+    // delivered to `channel` when the `when` timestamp passes.
+    async function createScheduledSend(channel, content, when) {
+      if (!session.value || !channel || !content || typeof when !== "number") return;
+      try {
+        await graffiti.post(
+          {
+            value: {
+              activity: "ScheduleSend",
+              type: "ScheduledMessage",
+              content,
+              targetChannel: channel,
+              scheduledFor: when,
+              published: Date.now(),
+            },
+            channels: [session.value.actor],
+            allowed: [],
+          },
+          session.value,
+        );
+      } catch {
+        // Best effort — user can retry.
+      }
+    }
+
+    // Delete a scheduled-send marker (e.g. after auto-send or manual cancel).
+    async function deleteScheduledSend(url) {
+      if (!session.value || !url) return;
+      try {
+        await graffiti.delete(url, session.value);
+      } catch {
+        // Best effort.
+      }
+    }
+
+    // Execute a scheduled send: look up the target chat, send the
+    // message via the existing `sendMessageToChat` path, then delete
+    // the marker so it disappears from the calendar.
+    async function executeScheduledSend(sendObj) {
+      if (!session.value || !sendObj) return;
+      const channel = sendObj.value.targetChannel;
+      const chat = chats.value.find((c) => c.value.channel === channel);
+      if (!chat) return; // Can't send if the user left / chat deleted.
+      const content = sendObj.value.content;
+      if (!content) return;
+      await sendMessageToChat(chat, content, null);
+      await deleteScheduledSend(sendObj.url);
+    }
+
     // Generic delete for any object the user owns (used by the chat
     // view's soft-delete + undo flow). Exposed here so the chat
     // component doesn't need to import `useGraffiti` directly.
@@ -936,15 +1228,23 @@ export function useSharedChatData() {
       allMessageObjects,
       areAllMessagesLoading,
       reactionObjects,
+      scheduledSendObjects,
 
       // Derived state
       leftChannels,
       laterChannels,
+      laterMessageUrls,
+      laterObjectsByMessageUrl,
+      laterCountByChannel,
       sortedChats,
+      recentChats,
+      otherChats,
       allChatChannels,
+      latestActivityByChannel,
       latestMessageByChannel,
       lastReadByChannel,
       scheduledForByChannel,
+      scheduledSendChannels,
       scheduledByDay,
       sortedColumns,
       reactionsByMessageUrl,
@@ -952,9 +1252,11 @@ export function useSharedChatData() {
       // Predicates
       hasUnread,
       isLater,
+      hasScheduledSend,
 
       // Mutations
-      markChatAsLater,
+      markMessageAsLater,
+      clearMessageLater,
       clearLater,
       markChatAsRead,
       scheduleLater,
@@ -965,6 +1267,9 @@ export function useSharedChatData() {
       deleteObject,
       addReaction,
       removeReaction,
+      createScheduledSend,
+      deleteScheduledSend,
+      executeScheduledSend,
     };
   });
 
