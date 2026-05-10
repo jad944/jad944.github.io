@@ -82,10 +82,14 @@
                             <router-link :to="`/chat/${chat.value.channel}`" class="chat-item-link"
                                 active-class="active">
                                 <span class="chat-name">{{ chat.value.title }}</span>
-                                <span v-if="hasUnread(chat) || isLater(chat)" class="chat-item-dots">
+                                <span v-if="hasUnread(chat) || isLater(chat) || hasPastDueScheduled(chat)"
+                                    class="chat-item-dots">
                                     <span v-if="hasUnread(chat)" class="unread-dot" aria-label="Unread messages"
                                         title="Unread messages"></span>
-                                    <span v-if="isLater(chat)" class="unread-dot later" aria-label="Reply later"
+                                    <span v-if="hasPastDueScheduled(chat)" class="unread-dot past-due"
+                                        aria-label="Overdue scheduled message"
+                                        title="Overdue scheduled message"></span>
+                                    <span v-else-if="isLater(chat)" class="unread-dot later" aria-label="Reply later"
                                         title="Marked to reply later"></span>
                                 </span>
                             </router-link>
@@ -96,10 +100,14 @@
                             <router-link :to="`/chat/${chat.value.channel}`" class="chat-item-link"
                                 active-class="active">
                                 <span class="chat-name">{{ chat.value.title }}</span>
-                                <span v-if="hasUnread(chat) || isLater(chat)" class="chat-item-dots">
+                                <span v-if="hasUnread(chat) || isLater(chat) || hasPastDueScheduled(chat)"
+                                    class="chat-item-dots">
                                     <span v-if="hasUnread(chat)" class="unread-dot" aria-label="Unread messages"
                                         title="Unread messages"></span>
-                                    <span v-if="isLater(chat)" class="unread-dot later" aria-label="Reply later"
+                                    <span v-if="hasPastDueScheduled(chat)" class="unread-dot past-due"
+                                        aria-label="Overdue scheduled message"
+                                        title="Overdue scheduled message"></span>
+                                    <span v-else-if="isLater(chat)" class="unread-dot later" aria-label="Reply later"
                                         title="Marked to reply later"></span>
                                 </span>
                             </router-link>
@@ -114,46 +122,6 @@
                     <button type="button" id="calendar-btn" @click="openCalendar()" title="Open the calendar">
                         Calendar
                     </button>
-                    <button type="button" id="schedule-send-btn"
-                        :disabled="!activeChat || !myMessage.trim() || isScheduleSending" :title="!activeChat
-                            ? 'Select a chat first'
-                            : !myMessage.trim()
-                                ? 'Type a message first'
-                                : 'Schedule this message to send later'" @click="openScheduleSendDialog()">
-                        <span class="schedule-send-btn-icon" aria-hidden="true">&#128197;</span>
-                        <span class="schedule-send-btn-label">Schedule Send</span>
-                    </button>
-                    <div id="later-button-row">
-                        <button type="button" id="later-btn"
-                            :class="{ active: selectedMessage && isMessageLater(selectedMessage) }"
-                            :disabled="!activeChat || !selectedMessage || isMarkingLater || isUnmarkingLater" :title="!activeChat
-                                ? 'Select a chat first'
-                                : !selectedMessage
-                                    ? 'Long-press a message to select it'
-                                    : selectedMessage && isMessageLater(selectedMessage)
-                                        ? 'Click to unmark this message'
-                                        : 'Mark this message to reply later'" @click="toggleMessageLater()">
-                            <span class="later-btn-dot" aria-hidden="true"></span>
-                            <span class="later-btn-label">
-                                {{ isMarkingLater
-                                ? "Marking..."
-                                : isUnmarkingLater
-                                ? "Unmarking..."
-                                : selectedMessage && isMessageLater(selectedMessage)
-                                ? "Unmark"
-                                : "Reply Later" }}
-                            </span>
-                        </button>
-                        <button type="button" id="schedule-btn"
-                            :disabled="!activeChat || !selectedMessage || isScheduling" :title="!activeChat
-                                ? 'Select a chat first'
-                                : !selectedMessage
-                                    ? 'Long-press a message to select it'
-                                    : 'Schedule a reply at a specific time'" @click="openScheduleDialog()">
-                            <span class="schedule-btn-icon" aria-hidden="true">&#128197;</span>
-                            <span class="schedule-btn-label">Remind Me to Reply</span>
-                        </button>
-                    </div>
                 </footer>
             </aside>
 
@@ -173,6 +141,23 @@
                         </button>
                         <h1>{{ activeChat ? activeChat.value.title : "Messages" }}</h1>
                     </div>
+                    <transition name="schedule-send-fade">
+                        <button v-if="activeChat && myMessage.trim()" type="button" id="schedule-send-btn"
+                            :disabled="isScheduleSending" title="Schedule this message to send later"
+                            @click="openScheduleSendDialog()">
+                            <span class="schedule-send-btn-icon" aria-hidden="true">&#128197;</span>
+                            <span class="schedule-send-btn-label">Schedule Send</span>
+                        </button>
+                    </transition>
+                    <span v-if="activeChat && activeChatPendingSendCount > 0" id="pending-send-indicator"
+                        :title="`${activeChatPendingSendCount} message${activeChatPendingSendCount === 1 ? '' : 's'} pending schedule send`"
+                        :aria-label="`${activeChatPendingSendCount} message${activeChatPendingSendCount === 1 ? '' : 's'} pending schedule send`">
+                        <span class="pending-send-indicator-icon" aria-hidden="true">&#128197;</span>
+                        <span class="pending-send-indicator-label">
+                            {{ activeChatPendingSendCount }} Message{{ activeChatPendingSendCount === 1 ? '' : 's' }}
+                            Pending Schedule Send
+                        </span>
+                    </span>
                     <span v-if="activeScheduledLabel" id="scheduled-indicator"
                         :title="`Scheduled reply for ${activeScheduledLabel}`"
                         :aria-label="`Scheduled reply for ${activeScheduledLabel}`">
@@ -238,7 +223,7 @@
                     <p v-else-if="areMessagesLoading" class="empty-state">
                         <em>Loading messages...</em>
                     </p>
-                    <p v-else-if="sortedMessages.length === 0" class="empty-state">
+                    <p v-else-if="sortedMessages.length === 0 && !mockScheduledSend" class="empty-state">
                         No messages yet. Say hello.
                     </p>
                     <ul v-else id="message-list" @click.self="deselectMessage()">
@@ -246,15 +231,14 @@
                                 mine: message.actor === $graffitiSession.value?.actor,
                                 selected: isMessageSelected(message),
                                 'has-later': isMessageLater(message),
-                            }" @mousedown.prevent="onMessagePressStart(message, $event)" @mouseup="onMessagePressEnd()"
-                            @mouseleave="onMessagePressCancel()"
-                            @touchstart.prevent="onMessagePressStart(message, $event)" @touchend="onMessagePressEnd()"
-                            @touchcancel="onMessagePressCancel()">
+                            }" @click="onMessageClick(message, $event)">
                             <span v-if="isMessageSelected(message)" class="message-select-bubble" aria-label="Selected">
                                 &#10003;
                             </span>
-                            <span v-if="isMessageLater(message)" class="message-later-dot" aria-label="Marked for later"
-                                title="Reply later"></span>
+                            <span v-if="isMessagePastDue(message)" class="message-later-dot past-due"
+                                aria-label="Overdue scheduled reply" title="Overdue scheduled reply"></span>
+                            <span v-else-if="isMessageLater(message)" class="message-later-dot"
+                                aria-label="Marked for later" title="Reply later"></span>
                             <button v-if="message.value.inReplyTo" class="message-reply-indicator"
                                 @click.stop="scrollToMessage(message.value.inReplyTo)" title="Go to replied message">
                                 <span class="reply-indicator-arrow" aria-hidden="true">&#8617;</span>
@@ -289,10 +273,56 @@
                             <reaction v-if="$graffitiSession.value && activeChat" :message="message" :chat="activeChat">
                             </reaction>
                         </li>
+                        <li v-if="mockScheduledSend" class="message mine mock-scheduled-send"
+                            :key="'mock-' + mockScheduledSend.url">
+                            <span class="mock-send-badge" aria-hidden="true">Scheduled Preview</span>
+                            <div class="message-meta">
+                                <strong class="message-author">
+                                    <graffiti-actor-to-handle :actor="mockScheduledSend.actor" v-slot="{ handle }">{{
+                                        displayHandle(handle) }}</graffiti-actor-to-handle>
+                                </strong>
+                                <span class="message-time mock-send-time">
+                                    Will send {{ mockScheduledSendLabel }}
+                                </span>
+                            </div>
+                            <p class="message-text">{{ mockScheduledSend.value.content }}</p>
+                            <button class="message-delete mock-undo-btn" @click="cancelMockScheduledSend()">
+                                Undo Schedule Send?
+                            </button>
+                        </li>
                     </ul>
                 </section>
 
                 <footer id="chat-footer" v-if="activeChat">
+                    <transition name="action-bar-rise">
+                        <div v-if="selectedMessage" class="message-action-bar">
+                            <button type="button" id="later-btn"
+                                :class="{ active: isMessageLater(selectedMessage) }"
+                                :disabled="isMarkingLater || isUnmarkingLater"
+                                :title="isMessageLater(selectedMessage)
+                                    ? 'Click to unmark this message'
+                                    : 'Mark this message to reply later'"
+                                @click="toggleMessageLater()">
+                                <span class="later-btn-dot" aria-hidden="true"></span>
+                                <span class="later-btn-label">
+                                    {{ isMarkingLater
+                                    ? "Marking..."
+                                    : isUnmarkingLater
+                                    ? "Unmarking..."
+                                    : isMessageLater(selectedMessage)
+                                    ? "Unmark"
+                                    : "Reply Later" }}
+                                </span>
+                            </button>
+                            <button type="button" id="schedule-btn"
+                                :disabled="isScheduling"
+                                title="Schedule a reply at a specific time"
+                                @click="openScheduleDialog()">
+                                <span class="schedule-btn-icon" aria-hidden="true">&#128197;</span>
+                                <span class="schedule-btn-label">Remind Me to Reply</span>
+                            </button>
+                        </div>
+                    </transition>
                     <div v-if="replyingTo" class="reply-banner">
                         <div class="reply-banner-content">
                             <span class="reply-banner-label">

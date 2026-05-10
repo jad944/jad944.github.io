@@ -50,6 +50,7 @@ function setup() {
     areChatsLoading,
     laterObjects,
     laterMessageUrls,
+    laterObjectsByMessageUrl,
     laterCountByChannel,
     allMessageObjects,
     areAllMessagesLoading,
@@ -67,8 +68,10 @@ function setup() {
     leaveChat,
     deleteObject,
     scheduledSendObjects,
+    scheduledSendCountByChannel,
     createScheduledSend: postCreateScheduledSend,
     executeScheduledSend: postExecuteScheduledSend,
+    deleteScheduledSend: postDeleteScheduledSend,
   } = useSharedChatData();
 
   // ---- Tab Notifications for Past-Due Scheduled Messages ----
@@ -246,40 +249,29 @@ function setup() {
   const isLeaveDialogOpen = ref(false);
   const isLeavingChat = ref(false);
 
-  // ---- Message selection (long-press) --------------------------------
+  // ---- Message selection (single click) ------------------------------
   //
-  // Users long-press (500ms) a message to select it. The selection
-  // bubble (a checkmark) pops to the left for received messages or
-  // the right for sent messages. Clicking anywhere else deselects.
-  // While a message is selected, the Reply Later and Schedule buttons
-  // in the sidebar footer act on that message instead of the chat.
+  // Users tap/click a message to select it. The selection bubble (a
+  // checkmark) pops to the left for received messages or the right
+  // for sent messages, and the Reply Later / Remind Me to Reply
+  // action bar slides up from the bottom-left of the messages panel.
+  // Clicking the same message again, or anywhere outside any message,
+  // deselects. Clicks on interactive descendants (the reply button,
+  // delete button, reaction trigger/chips, etc.) are ignored here so
+  // those actions don't accidentally toggle selection.
 
   const selectedMessage = ref(null);
-  let longPressTimer = null;
-  const LONG_PRESS_MS = 500;
 
-  function onMessagePressStart(message, event) {
-    // Prevent text selection during long press
-    if (longPressTimer) clearTimeout(longPressTimer);
-    longPressTimer = setTimeout(() => {
-      longPressTimer = null;
-      selectedMessage.value = message;
-      // Prevent the click-to-deselect from immediately firing
-      event?.preventDefault?.();
-    }, LONG_PRESS_MS);
-  }
-
-  function onMessagePressEnd() {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
+  function onMessageClick(message, event) {
+    if (event?.target?.closest?.(
+      "button, a, input, .reaction-component"
+    )) {
+      return;
     }
-  }
-
-  function onMessagePressCancel() {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
+    if (selectedMessage.value?.url === message.url) {
+      selectedMessage.value = null;
+    } else {
+      selectedMessage.value = message;
     }
   }
 
@@ -548,6 +540,84 @@ function setup() {
     }
   }
 
+  // ---- Scheduled-send preview (from calendar click) ------------------
+  //
+  // When the user clicks a scheduled-send entry in the calendar, the
+  // calendar route navigates here with `?previewSend=<sendObjectUrl>`.
+  // We resolve that URL against the live `scheduledSendObjects` stream
+  // and surface the matching marker as a "mock" message bubble at the
+  // bottom of the message list. The bubble looks like a regular sent
+  // message but tinted red so it reads as "this hasn't actually been
+  // sent yet". Its action button cancels the queued send instead of
+  // deleting a posted message.
+  //
+  // We resolve from the live stream (rather than snapshotting on
+  // navigation) so that:
+  //   * if the auto-send timer fires while the user is staring at
+  //     the preview, the bubble disappears at the same moment the
+  //     real message appears in the list.
+  //   * if the preview targets a chat the user has left or never
+  //     belonged to, mockScheduledSend stays null.
+  const previewSendUrl = computed(() => {
+    const q = route.query.previewSend;
+    if (!q) return null;
+    return Array.isArray(q) ? q[0] : q;
+  });
+
+  const mockScheduledSend = computed(() => {
+    if (!previewSendUrl.value) return null;
+    if (!activeChat.value) return null;
+    const found = scheduledSendObjects.value.find(
+      (o) => o.url === previewSendUrl.value,
+    );
+    if (!found) return null;
+    if (found.value.targetChannel !== activeChat.value.value.channel) {
+      return null;
+    }
+    return found;
+  });
+
+  const mockScheduledSendLabel = computed(() => {
+    const obj = mockScheduledSend.value;
+    if (!obj) return "";
+    const when = obj.value.scheduledFor;
+    if (typeof when !== "number") return "";
+    return new Date(when).toLocaleString();
+  });
+
+  // Strip the previewSend query so the next navigation back here
+  // doesn't keep showing a preview for a marker the user just
+  // cancelled.
+  function clearPreviewSendQuery() {
+    if (!route.query.previewSend) return;
+    const { previewSend, ...rest } = route.query;
+    router.replace({
+      name: route.name,
+      params: route.params,
+      query: rest,
+    });
+  }
+
+  async function cancelMockScheduledSend() {
+    const obj = mockScheduledSend.value;
+    if (!obj) return;
+    clearPreviewSendQuery();
+    await postDeleteScheduledSend(obj.url);
+  }
+
+  // Snap to the bottom whenever a preview opens so the mock bubble is
+  // immediately visible. Mirrors the chat-switch and new-message scroll
+  // behavior so the preview feels like part of the conversation flow.
+  watch(
+    () => mockScheduledSend.value?.url,
+    async (url) => {
+      if (!url) return;
+      pinnedToBottom.value = true;
+      await nextTick();
+      scrollMessagesToBottom();
+    },
+  );
+
   // ---- Soft-delete + undo state -------------------------------------
   //
   // Per-chat-view UX: hiding a deleted message immediately while
@@ -589,11 +659,59 @@ function setup() {
     () => !!activeChat.value && isLater(activeChat.value),
   );
 
+  // True when a chat has at least one Remind-Me-to-Reply marker
+  // (Later object with a scheduledFor) whose deadline has already
+  // passed. Drives the sidebar's red overdue dot, which replaces
+  // the green "Reply Later" dot whenever a reply reminder for this
+  // chat has crossed its scheduled time. ScheduleSend markers are
+  // intentionally excluded — overdue here is about replies the user
+  // owes, not outgoing messages waiting to fire.
+  function hasPastDueScheduled(chat) {
+    const channel = chat.value.channel;
+    for (const o of laterObjects.value) {
+      if (o.value.targetChannel !== channel) continue;
+      const when = o.value.scheduledFor;
+      if (typeof when === "number" && when <= currentTime.value) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Per-message variant of hasPastDueScheduled. True when this exact
+  // message has a Reply Later reminder whose scheduledFor has passed,
+  // so the chat surface can paint a red dot next to the message
+  // bubble (not just the chat row in the sidebar).
+  function isMessagePastDue(message) {
+    const list = laterObjectsByMessageUrl.value.get(message.url);
+    if (!list) return false;
+    for (const o of list) {
+      const when = o.value.scheduledFor;
+      if (typeof when === "number" && when <= currentTime.value) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   // Count of messages marked later in the active chat. Drives the
   // "# Messages to Reply to Later" header chip.
   const activeChatLaterCount = computed(() => {
     if (!activeChat.value) return 0;
     return laterCountByChannel.value.get(activeChat.value.value.channel) ?? 0;
+  });
+
+  // Count of pending Schedule Send markers in the active chat. Drives
+  // the "X Message(s) Pending Schedule Send" pill that lives next to
+  // the Schedule Send button in the chat header — so the user always
+  // knows there's an outgoing message queued, even when they aren't
+  // currently composing a new one (and thus the Schedule Send button
+  // itself is hidden).
+  const activeChatPendingSendCount = computed(() => {
+    if (!activeChat.value) return 0;
+    return (
+      scheduledSendCountByChannel.value.get(activeChat.value.value.channel) ?? 0
+    );
   });
 
   // Messages for just the currently open chat, derived from the
@@ -1055,18 +1173,22 @@ function setup() {
     displayHandle,
     hasUnread,
     isLater,
+    hasPastDueScheduled,
     isActiveChatLater,
     activeChatLaterCount,
+    activeChatPendingSendCount,
+    mockScheduledSend,
+    mockScheduledSendLabel,
+    cancelMockScheduledSend,
     isMarkingLater,
     isUnmarkingLater,
     toggleMessageLater,
     selectedMessage,
-    onMessagePressStart,
-    onMessagePressEnd,
-    onMessagePressCancel,
+    onMessageClick,
     deselectMessage,
     isMessageSelected,
     isMessageLater,
+    isMessagePastDue,
     replyingTo,
     startReply,
     cancelReply,

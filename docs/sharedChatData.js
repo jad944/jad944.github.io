@@ -428,6 +428,19 @@ export function useSharedChatData() {
       () => new Set(scheduledSendObjects.value.map((o) => o.value.targetChannel)),
     );
 
+    // Map<channel, number> — count of pending ScheduleSend markers per
+    // chat. Drives the "X Message(s) Pending Schedule Send" pill in the
+    // chat header. Each marker counts once because a queued send is a
+    // single (one message, one delivery time) pair.
+    const scheduledSendCountByChannel = computed(() => {
+      const map = new Map();
+      for (const o of scheduledSendObjects.value) {
+        const ch = o.value.targetChannel;
+        map.set(ch, (map.get(ch) ?? 0) + 1);
+      }
+      return map;
+    });
+
     // True when a chat has a scheduled-send marker targeting it.
     function hasScheduledSend(chat) {
       return scheduledSendChannels.value.has(chat.value.channel);
@@ -1245,6 +1258,7 @@ export function useSharedChatData() {
       lastReadByChannel,
       scheduledForByChannel,
       scheduledSendChannels,
+      scheduledSendCountByChannel,
       scheduledByDay,
       sortedColumns,
       reactionsByMessageUrl,

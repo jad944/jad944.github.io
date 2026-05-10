@@ -182,6 +182,15 @@ button:disabled {
     background: #34c759;
 }
 
+/* Sidebar overdue dot. Replaces the green Reply Later dot whenever
+   a chat has any scheduled marker (Reply Later w/ scheduledFor or
+   ScheduleSend) that has crossed its deadline. Same red as the
+   sorted view's .sorted-card-dot.past-due so the two surfaces speak
+   the same color language for "you're overdue here". */
+.unread-dot.past-due {
+    background: #ff3b30;
+}
+
 .chat-item-link.active .unread-dot {
     box-shadow: 0 0 0 2px #e8f0fe;
 }
@@ -319,6 +328,33 @@ button:disabled {
     border-radius: 50%;
     background: #34c759;
     box-shadow: 0 0 0 2px #ffffff;
+}
+
+/* Pending Schedule Send pill. Lives in the chat header, immediately
+   to the right of the Schedule Send button (which itself only appears
+   while composing). Uses the same red color family as #schedule-send-btn
+   and the .schedule-send variants in the calendar so every "this is a
+   queued outgoing message" surface in the app speaks the same color
+   language. Visible whenever the active chat has at least one pending
+   ScheduleSend marker, regardless of whether the user is currently
+   typing — the user always knows there's something queued. */
+#pending-send-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.7rem 0.3rem 0.55rem;
+    background: #fdecec;
+    border: 1px solid #f0c2c2;
+    border-radius: 999px;
+    color: #8b1a1a;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.pending-send-indicator-icon {
+    font-size: 0.85rem;
+    line-height: 1;
 }
 
 #members-panel {
@@ -549,6 +585,15 @@ button:disabled {
     right: -1rem;
 }
 
+/* Past-due variant. Same position/size as the green Reply Later dot
+   but recolored red — matches the sidebar's .unread-dot.past-due and
+   the sorted view's .sorted-card-dot.past-due so a single red dot
+   means the same thing across every surface: a Remind-Me-to-Reply
+   reminder whose deadline has already passed. */
+.message-later-dot.past-due {
+    background: #ff3b30;
+}
+
 /* If both selection bubble and green dot are present, hide the dot
    (the checkmark takes precedence visually) */
 .message.selected .message-later-dot {
@@ -594,6 +639,79 @@ button:disabled {
 .message-delete:hover:not(:disabled) {
     background: rgba(0, 0, 0, 0.05);
     border-color: #d2d2d7;
+}
+
+/* ---- Mock Scheduled Send bubble ---- */
+/* Rendered at the bottom of the message list when the user lands on a
+   chat via /#/chat/<channel>?previewSend=<sendObjectUrl> (i.e. they
+   clicked a Schedule Send entry on the calendar). It looks like a
+   normal sent message — same right-aligned bubble shape, same author
+   line — but tinted red so it reads as "this hasn't actually been
+   sent yet". The "Scheduled Preview" badge in the top-right corner
+   makes the pending state explicit, and the action button below
+   replaces the usual "Delete" with "Undo Schedule Send?" to cancel
+   the queued send. The red palette matches #schedule-send-btn and
+   the schedule-send variants in the calendar so a user who just
+   clicked a red event in the calendar lands on a bubble in the
+   exact same color. */
+.message.mock-scheduled-send {
+    background: #fdecec;
+    border-color: #f0c2c2;
+    border-style: dashed;
+    color: #1d1d1f;
+    /* Sit slightly apart from the real conversation so the preview
+       reads as appended-to rather than mixed-in. */
+    margin-top: 0.5rem;
+    /* Reaction chips and hover affordances do not apply to a preview
+       that hasn't actually been sent — push the badge into the corner
+       and clear the right-side action overflow space. */
+    padding-top: 1.25rem;
+    animation: mock-send-pop 200ms ease-out;
+}
+
+@keyframes mock-send-pop {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.mock-send-badge {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.55rem;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.05rem 0.35rem;
+    background: #d12a2a;
+    color: #ffffff;
+    border-radius: 3px;
+    line-height: 1.3;
+}
+
+.mock-send-time {
+    color: #8b1a1a;
+    font-weight: 600;
+}
+
+.mock-undo-btn {
+    color: #8b1a1a;
+    border-color: #f0c2c2;
+    background: #ffffff;
+    font-weight: 600;
+}
+
+.mock-undo-btn:hover:not(:disabled) {
+    background: #fdecec;
+    border-color: #e6a4a4;
+    color: #5a1010;
 }
 
 /* ---- Reply button (hover action) ---- */
@@ -804,6 +922,7 @@ button:disabled {
 }
 
 #chat-footer {
+    position: relative;
     padding: 0.75rem 1.5rem;
     border-top: 1px solid #e5e5ea;
     background: #ffffff;
@@ -999,24 +1118,31 @@ button:disabled {
     background: #f0f0f3;
 }
 
+/* ---- Schedule Send pill (chat header) ---- */
+/* Sized and positioned to match the indicator pills (#scheduled-indicator,
+   #later-indicator) sitting on the right side of the chat header. The
+   button only renders while the user is composing (myMessage.trim() is
+   truthy), and Vue's <transition name="schedule-send-fade"> handles the
+   fade-in/out so the button feels like an in-context affordance rather
+   than a static control. */
 #schedule-send-btn {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
     gap: 0.4rem;
-    width: 100%;
-    padding: 0.55rem 0.75rem;
-    margin-bottom: 0.5rem;
-    background: #ffffff;
-    border: 1px solid #d12a2a;
+    padding: 0.3rem 0.7rem 0.3rem 0.55rem;
+    background: #fdecec;
+    border: 1px solid #f0c2c2;
+    border-radius: 999px;
     color: #8b1a1a;
-    border-radius: 8px;
+    font-size: 0.8rem;
     font-weight: 600;
-    font-size: 0.9rem;
+    line-height: 1;
+    cursor: pointer;
 }
 
 #schedule-send-btn:hover:not(:disabled) {
-    background: #fdecec;
+    background: #fcdcdc;
+    border-color: #e6a4a4;
 }
 
 #schedule-send-btn:disabled {
@@ -1025,17 +1151,48 @@ button:disabled {
 }
 
 .schedule-send-btn-icon {
-    font-size: 1rem;
+    font-size: 0.85rem;
     line-height: 1;
 }
 
-#later-button-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
+.schedule-send-fade-enter-active,
+.schedule-send-fade-leave-active {
+    transition:
+        opacity 180ms ease-out,
+        transform 180ms ease-out;
 }
 
-#later-button-row #later-btn {
+.schedule-send-fade-enter-from,
+.schedule-send-fade-leave-to {
+    opacity: 0;
+    transform: translateY(-3px);
+}
+
+/* ---- Floating message action bar ---- */
+/* Appears at the bottom-left of the messages panel when a message is
+   selected. Anchored above the #chat-footer via position:absolute +
+   bottom:100% so it never displaces the message input but still reads
+   as part of the messages area. The two actions (Reply Later, Remind
+   Me to Reply) stack vertically because they belong to the same
+   conceptual group ("postpone this reply") and stacked pills give
+   each label room to breathe — a side-by-side row was cramped and
+   hid the schedule label on narrow chat windows. */
+.message-action-bar {
+    position: absolute;
+    left: 1.5rem;
+    bottom: 100%;
+    margin-bottom: 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 220px;
+    z-index: 5;
+    /* Soft shadow tying the bar to the input area below */
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.08));
+}
+
+.message-action-bar #later-btn,
+.message-action-bar #schedule-btn {
     width: 100%;
 }
 
@@ -1066,6 +1223,28 @@ button:disabled {
 .schedule-btn-icon {
     font-size: 1rem;
     line-height: 1;
+}
+
+/* Slide-up + fade animation for the action bar. The bar starts a few
+   pixels below its final position and translates upward, so it reads
+   as "rising" out of the bottom-left of the messages panel as the user
+   selects a message. Cubic-bezier gives a slight overshoot-free spring. */
+.action-bar-rise-enter-active {
+    transition:
+        opacity 220ms ease-out,
+        transform 260ms cubic-bezier(0.2, 0.8, 0.25, 1);
+}
+
+.action-bar-rise-leave-active {
+    transition:
+        opacity 160ms ease-in,
+        transform 160ms ease-in;
+}
+
+.action-bar-rise-enter-from,
+.action-bar-rise-leave-to {
+    opacity: 0;
+    transform: translateY(18px);
 }
 
 /* Used by the prev/next month arrows in the schedule modal's mini

@@ -95,7 +95,7 @@
                         class="calendar-day-event"
                         :class="{ 'schedule-send': event.type === 'send' }"
                         :title="`${formatTime(event.scheduledFor)} \u2014 ${event.type === 'send' ? '\u{1F4E8} Send: ' : ''}${event.messagePreview || event.title}`"
-                        @click.stop="openChatFromCalendar(event.channel, event.messageUrl)"
+                        @click.stop="openChatFromCalendar(event.channel, event.messageUrl, event.type === 'send' ? event.laterUrl : null)"
                     >
                         <span class="calendar-day-event-time">
                             {{ formatTime(event.scheduledFor) }}
@@ -124,7 +124,7 @@
                         class="calendar-hour-event"
                         :class="{ 'schedule-send': event.type === 'send' }"
                         :title="`${formatTime(event.scheduledFor)} \u2014 ${event.type === 'send' ? '\u{1F4E8} Send: ' : ''}${event.messagePreview || event.title}`"
-                        @click="openChatFromCalendar(event.channel, event.messageUrl)"
+                        @click="openChatFromCalendar(event.channel, event.messageUrl, event.type === 'send' ? event.laterUrl : null)"
                     >
                         <span class="calendar-hour-event-time">
                             {{ formatTime(event.scheduledFor) }}

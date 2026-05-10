@@ -116,8 +116,20 @@ function setup() {
     router.push({ name: "home" });
   }
 
-  function openChatFromCalendar(channel, messageUrl) {
-    const query = messageUrl ? { animateMessage: messageUrl } : undefined;
+  // Schedule-send entries pass `sendUrl` (the marker's Graffiti URL)
+  // so the chat view can render a red mock-message preview at the
+  // bottom of the message list with an "Undo Schedule Send?" action.
+  // Reply-reminder entries pass `messageUrl` so the chat view scrolls
+  // to and briefly animates the original message. The two are
+  // mutually exclusive — a calendar entry is one or the other, never
+  // both — so we pick whichever query param applies.
+  function openChatFromCalendar(channel, messageUrl, sendUrl) {
+    let query;
+    if (sendUrl) {
+      query = { previewSend: sendUrl };
+    } else if (messageUrl) {
+      query = { animateMessage: messageUrl };
+    }
     router.push({ name: "chat", params: { channel }, query });
   }
 
